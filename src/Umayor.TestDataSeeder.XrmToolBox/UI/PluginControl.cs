@@ -48,7 +48,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
 
         private TextBox _rutBox, _pasaporteBox;
         private Button _btnPreview, _btnMigrate, _btnCancel;
-        private Button _btnDiagnoseAutomation;
+        private Button _btnDiagnoseAutomation, _btnClearLog;
         private TextBox _logBox;
 
         private CancellationTokenSource _currentOperationCts;
@@ -241,6 +241,9 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
             _btnDiagnoseAutomation.Enabled = false;
             row.Controls.Add(_btnDiagnoseAutomation);
 
+            _btnClearLog = MakeButton("Limpiar Log", OnClearLog);
+            row.Controls.Add(_btnClearLog);
+
             return row;
         }
 
@@ -254,6 +257,8 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
         // --- Acciones ---------------------------------------------------------------------------
 
         private void OnCancel(object sender, EventArgs e) => _currentOperationCts?.Cancel();
+
+        private void OnClearLog(object sender, EventArgs e) => _logBox.Clear();
 
         private void OnPreview(object sender, EventArgs e)
         {
