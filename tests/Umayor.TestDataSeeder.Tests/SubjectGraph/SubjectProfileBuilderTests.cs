@@ -88,5 +88,38 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
             Assert.True(entity.Filter.Conditions.Count > 0 || entity.Filter.SubFilters.Count > 0);
             Assert.False(FakeSourceRecordService.MatchesFilter(unrelatedRecord, entity.Filter));
         }
+
+        /// <summary>
+        /// Regresión de un crash real reportado por el usuario contra su tenant real: "'ActivityPointer'
+        /// entity doesn't contain attribute with Name = 'activitypointerid'". Causa: el guard de
+        /// filtro vacío armaba la condición "no-match" con "&lt;logicalname&gt;id" — pero
+        /// <c>activitypointer</c>, como TODA entidad de tipo Activity en Dataverse, tiene su
+        /// primary key real en <c>activityid</c>, no en "&lt;logicalname&gt;id". Se dispara
+        /// exactamente en el caso más común: un contacto sin ningún <c>activityparty</c> propio
+        /// (la única vía de resolución de la fila 26).
+        /// </summary>
+        [Fact]
+        public async Task BuildAsync_ActivityPointerNoMatchFilter_UsesActivityIdNotOwnLogicalNameId()
+        {
+            var contactId = Guid.NewGuid();
+            var contact = new DataRecord("contact", contactId);
+            contact.Attributes["wit_rut"] = "12345678";
+            contact.Attributes["modifiedon"] = DateTime.UtcNow;
+            // Deliberadamente sin ningún activityparty para este contacto -> BuildActivityPointerFilterAsync
+            // devuelve un filtro vacío -> dispara el guard NoMatchFilter de SubjectProfileBuilder.
+
+            var service = new FakeSourceRecordService(new Dictionary<string, List<DataRecord>>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["contact"] = new List<DataRecord> { contact }
+            });
+
+            var result = await SubjectProfileBuilder.BuildAsync(service, "12.345.678-9", null, CancellationToken.None);
+
+            var entity = result.Profile.Entities.Single(e => e.LogicalName == "activitypointer");
+            var condition = Assert.Single(entity.Filter.Conditions);
+
+            Assert.Equal("activityid", condition.AttributeName);
+            Assert.NotEqual("activitypointerid", condition.AttributeName);
+        }
     }
 }

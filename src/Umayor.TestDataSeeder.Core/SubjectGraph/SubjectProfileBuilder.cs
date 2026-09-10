@@ -76,16 +76,41 @@ namespace Umayor.TestDataSeeder.Core.SubjectGraph
         private static bool IsEmpty(RecordFilter filter)
             => filter == null || ((filter.Conditions?.Count ?? 0) == 0 && (filter.SubFilters?.Count ?? 0) == 0);
 
-        /// <summary>Un filtro que nunca matchea ningún registro real — comparar la primary key
-        /// (convención de plataforma: siempre "&lt;logicalname&gt;id") contra <see cref="Guid.Empty"/>,
-        /// que Dataverse nunca asigna a un registro real.</summary>
-        private static RecordFilter NoMatchFilter(string logicalName) => new RecordFilter
+        /// <summary>Tablas del mapa de relaciones (docs/SUBJECT_RELATIONSHIP_MAP.md) que son de
+        /// tipo Activity en Dataverse — su primary key real es SIEMPRE <c>activityid</c>, nunca
+        /// <c>&lt;logicalname&gt;id</c> (bug real encontrado en vivo: "'ActivityPointer' entity
+        /// doesn't contain attribute with Name = 'activitypointerid'" al intentar filtrar
+        /// <c>activitypointer</c> — la fila 26 del mapa, la más propensa a caer en
+        /// <see cref="NoMatchFilter"/> porque solo tiene una vía de resolución, la de
+        /// <c>activityparty</c>). <c>activityparty</c> mismo NO es Activity-type — su propia
+        /// primary key es <c>activitypartyid</c>, la convención estándar aplica ahí sin problema.</summary>
+        private static readonly HashSet<string> ActivityTypeTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            LogicalOperator = FilterLogicalOperator.And,
-            Conditions = new List<FilterCondition>
-            {
-                new FilterCondition { AttributeName = logicalName + "id", Operator = FilterOperator.Equal, Value = Guid.Empty }
-            }
+            "activitypointer",
+            "email",
+            "phonecall",
+            "wit_actividadchat",
+            "wit_visitaweb",
+            "wit_visitapresencial",
+            "wit_evento",
+            "wit_whatsapp",
+            "wit_sms",
+            "msdyn_ocliveworkitem",
         };
+
+        /// <summary>Un filtro que nunca matchea ningún registro real — comparar la primary key
+        /// real contra <see cref="Guid.Empty"/>, que Dataverse nunca asigna a un registro real.</summary>
+        private static RecordFilter NoMatchFilter(string logicalName)
+        {
+            var primaryIdAttribute = ActivityTypeTables.Contains(logicalName) ? "activityid" : logicalName + "id";
+            return new RecordFilter
+            {
+                LogicalOperator = FilterLogicalOperator.And,
+                Conditions = new List<FilterCondition>
+                {
+                    new FilterCondition { AttributeName = primaryIdAttribute, Operator = FilterOperator.Equal, Value = Guid.Empty }
+                }
+            };
+        }
     }
 }

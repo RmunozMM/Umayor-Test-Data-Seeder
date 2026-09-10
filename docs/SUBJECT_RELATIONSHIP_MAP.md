@@ -90,6 +90,19 @@ traería la tabla COMPLETA — datos de cualquier otro sujeto — al entorno baj
 ningún registro real (`<tabla>id = Guid.Empty`), en un único punto que aplica a las 28 reglas por
 igual — no confiar en que cada regla nueva se acuerde de este caso por su cuenta.
 
+## Cuidado con la primary key de las tablas Activity-type
+
+`activitypointer`, `email`, `phonecall`, `wit_actividadchat`, `wit_visitaweb`,
+`wit_visitapresencial`, `wit_evento`, `wit_whatsapp`, `wit_sms` y `msdyn_ocliveworkitem` son
+todas de tipo Activity en Dataverse — su primary key real es SIEMPRE `activityid`, nunca
+`<logicalname>id`. Bug real encontrado en vivo: el guard de filtro vacío de
+`SubjectProfileBuilder` armaba `activitypointerid` para la fila 26, y Dataverse lo rechazó
+("'ActivityPointer' entity doesn't contain attribute with Name = 'activitypointerid'"). Corregido
+con una lista explícita (`SubjectProfileBuilder.ActivityTypeTables`). `activityparty` NO es
+Activity-type — su propia primary key es `activitypartyid`, la convención estándar aplica ahí
+sin problema (distinto del atributo `activityparty.activityid`, que es un LOOKUP, no su propia
+primary key — ver fila 26 más arriba).
+
 ## Regla de fidelidad
 
 Este mapa debe seguir siendo un superconjunto o igual al SQL de referencia — nunca un
