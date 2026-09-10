@@ -379,7 +379,9 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
                         ManifestStore = _manifestStore
                     };
 
-                    args.Result = new MigrationExecutor().ExecuteAsync(request, token).GetAwaiter().GetResult();
+                    var manifest = new MigrationExecutor().ExecuteAsync(request, token).GetAwaiter().GetResult();
+                    DiagnoseEntityNotFoundFailures(manifest, sourceTables, profile, token);
+                    args.Result = manifest;
                 },
                 PostWorkCallBack = args =>
                 {
@@ -406,6 +408,62 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
                         "Migración completa", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             });
+        }
+
+        /// <summary>
+        /// Diagnóstico puntual: Dataverse reporta "Entity 'X' With Id = &lt;guid&gt; Does Not
+        /// Exist" pero NUNCA dice qué atributo del registro que se intentó escribir contenía esa
+        /// referencia — sin esto, un fallo así (p. ej. contra "SystemUser") es indiagnosticable a
+        /// simple vista. Re-lee el registro real de Source (mismo id que falló) y busca cuál de
+        /// sus atributos apunta exactamente a ese GUID, para nombrarlo en el log.
+        /// </summary>
+        private void DiagnoseEntityNotFoundFailures(
+            ExecutionManifest manifest, Dictionary<string, TableSummary> sourceTables, MigrationProfile profile, CancellationToken token)
+        {
+            var pattern = new System.Text.RegularExpressions.Regex(
+                @"Entity '([^']+)' With Id = ([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}) Does Not Exist");
+
+            foreach (var table in manifest.Tables)
+            {
+                if (!sourceTables.TryGetValue(table.LogicalName, out var sourceTable)) continue;
+                var entityConfig = profile.Entities.FirstOrDefault(e => string.Equals(e.LogicalName, table.LogicalName, StringComparison.OrdinalIgnoreCase));
+                if (entityConfig == null) continue;
+
+                var restoreState = profile.Options.RestoreStateStatus && sourceTable.HasStateStatus;
+                var writableAttrs = AttributeWritabilityRules.GetWritableAttributes(sourceTable, entityConfig, restoreState);
+                var columns = writableAttrs.Select(a => a.LogicalName).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+                var examplesPerMessage = table.Errors
+                    .Where(e => e.Outcome == RecordOutcome.Failed)
+                    .GroupBy(e => e.ErrorMessage ?? string.Empty)
+                    .Select(g => g.First());
+
+                foreach (var failure in examplesPerMessage)
+                {
+                    var match = pattern.Match(failure.ErrorMessage ?? string.Empty);
+                    if (!match.Success) continue;
+
+                    token.ThrowIfCancellationRequested();
+                    var targetGuid = Guid.Parse(match.Groups[2].Value);
+
+                    IReadOnlyList<DataRecord> records;
+                    try { records = _sourceRecords.RetrieveByIdsAsync(table.LogicalName, new[] { failure.RecordId }, columns, token).GetAwaiter().GetResult(); }
+                    catch { continue; }
+
+                    var record = records.FirstOrDefault();
+                    if (record == null) continue;
+
+                    var matchingAttrs = record.Attributes
+                        .Where(kvp => kvp.Value is DataReference dr && dr.Id == targetGuid)
+                        .Select(kvp => kvp.Key)
+                        .ToList();
+
+                    if (matchingAttrs.Count > 0)
+                    {
+                        AppendLog($"    ↳ diagnóstico: en '{table.LogicalName}' (registro {failure.RecordId:D}), el/los campo(s) '{string.Join(", ", matchingAttrs)}' apunta(n) a '{match.Groups[1].Value}' {targetGuid:D}, inexistente en Target.");
+                    }
+                }
+            }
         }
 
         private Dictionary<string, TableSummary> LoadTableMetadata(
