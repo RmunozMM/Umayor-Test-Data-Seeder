@@ -14,6 +14,7 @@ using Umayor.TestDataSeeder.Core.SubjectGraph;
 using Umayor.TestDataSeeder.XrmToolBox.Services;
 using McTools.Xrm.Connection;
 using Microsoft.Xrm.Sdk;
+using Microsoft.Crm.Sdk.Messages;
 using XrmToolBox.Extensibility;
 using XrmToolBox.Extensibility.Interfaces;
 
@@ -358,6 +359,18 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
                 Work = (worker, args) =>
                 {
                     var profile = _lastResolved.Profile;
+
+                    try
+                    {
+                        var who = (WhoAmIResponse)_targetService.Execute(new WhoAmIRequest());
+                        profile.Options.OwnerIdOverride = who.UserId;
+                        AppendLog($"Mitigación activa: los registros se crearán con owner = usuario conectado a Target ({who.UserId}), para evitar fallas de SystemUser huérfanos de Origen.");
+                    }
+                    catch (Exception ex)
+                    {
+                        AppendLog($"No se pudo obtener el usuario conectado a Target para aplicar el override de owner — se continúa sin ese override. ({ex.Message})");
+                    }
+
                     SetWorkingMessage("Cargando metadata de las tablas del mapa de relaciones...");
                     var sourceTables = LoadTableMetadata(profile, _sourceMetadata, token);
                     var targetTables = LoadTableMetadata(profile, _targetMetadata, token);
