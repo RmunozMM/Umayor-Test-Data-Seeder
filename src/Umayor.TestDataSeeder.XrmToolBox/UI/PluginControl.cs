@@ -277,10 +277,20 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
                     var sourceTables = LoadTableMetadata(result.Profile, _sourceMetadata, token);
                     var plan = MigrationPlanner.CreatePlan(result.Profile, sourceTables);
 
+                    // CRÍTICO: sin esto, MigrationPreviewBuilder pagina la tabla COMPLETA de
+                    // Source por cada tabla del mapa (todo Producción) en vez de solo lo del
+                    // sujeto — el mismo Filter que ya lleva cada ProfileEntity (armado por
+                    // SubjectProfileBuilder) tiene que llegar hasta acá. Bug real: la primera
+                    // versión de este método no lo pasaba, y una corrida tardó 70+ minutos
+                    // leyendo tablas enteras sin ningún indicio de que eso era lo que pasaba.
+                    var entityFilters = result.Profile.Entities
+                        .Where(pe => pe.Enabled)
+                        .ToDictionary(pe => pe.LogicalName, pe => pe.Filter, StringComparer.OrdinalIgnoreCase);
+
                     SetWorkingMessage("Contando registros por tabla...");
                     var preview = new MigrationPreviewBuilder()
                         .BuildAsync(plan, sourceTables, _sourceRecords, _targetRecords, pageSize: 500, maxRecordsPerTable: 0, token,
-                            msg => SetWorkingMessage(msg))
+                            msg => SetWorkingMessage(msg), entityFilters)
                         .GetAwaiter().GetResult();
 
                     args.Result = new PreviewOutcome { Resolved = result, Preview = preview };
