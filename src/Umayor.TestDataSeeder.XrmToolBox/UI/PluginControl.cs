@@ -315,6 +315,11 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
                     _lastResolved = outcome.Resolved;
 
                     AppendLog($"=== SUJETO RESUELTO: contactid={outcome.Resolved.Context.ContactId} ===");
+                    if (!string.IsNullOrWhiteSpace(outcome.Resolved.Context.Rut))
+                    {
+                        var fakeRut = RutGenerator.Generate(outcome.Resolved.Context.Rut);
+                        AppendLog($"RUT anonimizado con el que va a quedar en Target: {fakeRut.Formatted} (siempre el mismo para este RUT real, no cambia entre corridas).");
+                    }
                     foreach (var table in outcome.Preview.OrderBy(t => t.LogicalName, StringComparer.OrdinalIgnoreCase))
                     {
                         AppendLog($"{table.LogicalName}: {table.SourceRecordCount} en Source -> {table.ToCreate} a crear, {table.ToUpdate} a actualizar.");
@@ -330,8 +335,12 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
         {
             if (_lastResolved == null) return;
 
+            var fakeRutText = !string.IsNullOrWhiteSpace(_lastResolved.Context.Rut)
+                ? $"\n\nQueda con el RUT anonimizado {RutGenerator.Generate(_lastResolved.Context.Rut).Formatted} en Target."
+                : string.Empty;
+
             if (MessageBox.Show(
-                    $"Se va a migrar (anonimizado) el grafo de registros del sujeto contactid={_lastResolved.Context.ContactId} hacia Target. ¿Confirmas?",
+                    $"Se va a migrar (anonimizado) el grafo de registros del sujeto contactid={_lastResolved.Context.ContactId} hacia Target.{fakeRutText}\n\n¿Confirmas?",
                     "Confirmar migración", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
             {
                 return;
@@ -385,8 +394,11 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
                     var totalCreated = manifest.Tables.Sum(t => t.Created);
                     var totalUpdated = manifest.Tables.Sum(t => t.Updated);
                     var totalFailed = manifest.Tables.Sum(t => t.Failed);
-                    AppendLog($"=== MIGRACIÓN COMPLETA (anonimizada): {totalCreated} creados, {totalUpdated} actualizados, {totalFailed} fallidos ===");
-                    MessageBox.Show($"Listo. {totalCreated} creados, {totalUpdated} actualizados, {totalFailed} fallidos.",
+                    var fakeRutLine = !string.IsNullOrWhiteSpace(_lastResolved.Context.Rut)
+                        ? $" RUT anonimizado en Target: {RutGenerator.Generate(_lastResolved.Context.Rut).Formatted}."
+                        : string.Empty;
+                    AppendLog($"=== MIGRACIÓN COMPLETA (anonimizada): {totalCreated} creados, {totalUpdated} actualizados, {totalFailed} fallidos.{fakeRutLine} ===");
+                    MessageBox.Show($"Listo. {totalCreated} creados, {totalUpdated} actualizados, {totalFailed} fallidos.{fakeRutLine}",
                         "Migración completa", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             });
