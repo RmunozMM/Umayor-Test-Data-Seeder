@@ -237,7 +237,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
 
             var hint = new System.Windows.Forms.Label
             {
-                Text = "RUT: con o sin puntos/guión, con o sin dígito verificador (se acepta cualquiera de los dos formatos).",
+                Text = "RUT: se busca solo por el cuerpo (sin dígito verificador). Podés tipear \"17175272\" o \"17175272-8\" (el DV se ignora).",
                 AutoSize = true,
                 Dock = DockStyle.Top,
                 ForeColor = Color.DimGray,

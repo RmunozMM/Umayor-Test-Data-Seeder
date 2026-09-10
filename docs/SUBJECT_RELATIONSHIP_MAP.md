@@ -11,6 +11,14 @@ traduce cada bloque `UNION ALL` de ese SQL a una regla declarativa (`RecordFilte
 Antes de aplicar cualquier regla de tabla, se resuelve `contact` por `wit_rut` o `wit_pasaporte`
 (uno de los dos, igual que el SQL) y se leen estos campos de ese único registro — `SubjectContext`:
 
+**Formato de `contact.wit_rut`** (confirmado mirando el formulario real de Dataverse, no
+asumido): guarda SOLO el cuerpo del RUT, sin el dígito verificador — el DV vive aparte en
+`contact.wit_dv`. `SubjectResolver.NormalizeRut` descarta cualquier guión-y-DV que el usuario
+tipee en la UI antes de buscar (p. ej. "17175272-8" o "17.175.272-8" → busca "17175272"); un
+valor sin guión se usa tal cual, asumiendo que ya es el cuerpo. Primer intento de este mapeo
+asumía (mal, sin evidencia real) que `wit_rut` guardaba cuerpo+DV concatenados — corregido tras
+que el usuario reportara una búsqueda real que no encontraba el contacto esperado.
+
 | Campo de `contact` | Uso |
 |---|---|
 | `contactid` | El "root" — casi todas las reglas filtran por este GUID. |

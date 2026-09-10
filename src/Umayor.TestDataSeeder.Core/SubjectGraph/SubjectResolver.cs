@@ -89,15 +89,19 @@ namespace Umayor.TestDataSeeder.Core.SubjectGraph
         private static Guid? ReferenceId(DataRecord record, string attributeName)
             => record.TryGetValue<DataReference>(attributeName, out var reference) ? reference.Id : (Guid?)null;
 
-        /// <summary>Quita puntos, guiones y espacios, y deja el dígito verificador en mayúscula
-        /// ('k' → 'K') — <c>contact.wit_rut</c> en el tenant real de Umayor guarda el RUT
-        /// completo (cuerpo + dígito verificador) concatenado sin separador, p. ej. "171752728"
-        /// para 17.175.272-8; esto deja que el usuario tipee con o sin puntos/guión en la UI.</summary>
+        /// <summary>Quita puntos y espacios, y descarta el dígito verificador si viene incluido
+        /// — <c>contact.wit_rut</c> en el tenant real de Umayor guarda SOLO el cuerpo del RUT,
+        /// sin el DV (que vive aparte en <c>contact.wit_dv</c>; confirmado mirando el formulario
+        /// real: "RUT: 17175272" / "DV: 8" en campos separados). Si el usuario tipea con guión y
+        /// DV ("17175272-8" o "17.175.272-8"), se busca solo por lo que queda antes del guión;
+        /// si tipea sin guión, se usa tal cual (se asume que ya es el cuerpo).</summary>
         internal static string NormalizeRut(string rut)
         {
             if (string.IsNullOrWhiteSpace(rut)) return rut;
-            var chars = rut.Where(c => c != '.' && c != '-' && !char.IsWhiteSpace(c)).ToArray();
-            return new string(chars).ToUpperInvariant();
+            var cleaned = new string(rut.Where(c => c != '.' && !char.IsWhiteSpace(c)).ToArray());
+            var dashIndex = cleaned.IndexOf('-');
+            var body = dashIndex >= 0 ? cleaned.Substring(0, dashIndex) : cleaned;
+            return body.ToUpperInvariant();
         }
     }
 }

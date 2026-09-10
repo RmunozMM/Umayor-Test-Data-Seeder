@@ -36,7 +36,7 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
         {
             var contactId = Guid.NewGuid();
             var contact = new DataRecord("contact", contactId);
-            contact.Attributes["wit_rut"] = "123456789";
+            contact.Attributes["wit_rut"] = "12345678";
             contact.Attributes["modifiedon"] = DateTime.UtcNow;
 
             var service = new FakeSourceRecordService(new Dictionary<string, List<DataRecord>>(StringComparer.OrdinalIgnoreCase)
@@ -70,7 +70,7 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
         {
             var contactId = Guid.NewGuid();
             var contact = new DataRecord("contact", contactId);
-            contact.Attributes["wit_rut"] = "123456789";
+            contact.Attributes["wit_rut"] = "12345678";
             contact.Attributes["modifiedon"] = DateTime.UtcNow;
             // Deliberadamente SIN wit_tramo ni wit_ingresobrutofamiliar.
 

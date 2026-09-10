@@ -58,7 +58,7 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
 
             var contact = Contact(
                 contactId,
-                rut: "111111111", // sin puntos/guión: así lo guarda contact.wit_rut en el tenant real (ver SubjectResolver.NormalizeRut)
+                rut: "11111111", // solo el cuerpo (8 dígitos), sin DV: así lo guarda contact.wit_rut en el tenant real (ver SubjectResolver.NormalizeRut)
                 originatingLeadId: leadId,
                 witCaso: casoId,
                 witEventoOrigen: eventoId,
@@ -74,7 +74,7 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
 
             Assert.NotNull(ctx);
             Assert.Equal(contactId, ctx.ContactId);
-            Assert.Equal("111111111", ctx.Rut);
+            Assert.Equal("11111111", ctx.Rut);
             Assert.Equal(leadId, ctx.OriginatingLeadId);
             Assert.Equal(casoId, ctx.WitCaso);
             Assert.Equal(eventoId, ctx.WitEventoOrigen);
@@ -83,12 +83,52 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
             Assert.Equal(ingresoId, ctx.WitIngresoBrutoFamiliar);
         }
 
+        /// <summary>
+        /// Regresión de un bug real reportado por el usuario contra su tenant real: probó con
+        /// "171752728" (cuerpo + DV concatenados sin guión, 9 dígitos) esperando que matcheara
+        /// un contact cuyo wit_rut real es "17175272" (8 dígitos, SOLO el cuerpo — confirmado
+        /// mirando el formulario real de Dataverse, con RUT y DV en campos separados). El primer
+        /// intento de este fix asumía erróneamente que wit_rut guardaba cuerpo+DV concatenado;
+        /// la corrección real es que <see cref="SubjectResolver.NormalizeRut"/> tiene que
+        /// DESCARTAR el DV (todo lo que sigue al guión), no concatenarlo.
+        /// </summary>
+        [Theory]
+        [InlineData("17175272-8")]   // formato esperado: cuerpo + guión + DV, se descarta el DV
+        [InlineData("17.175.272-8")] // con puntos también
+        [InlineData("17175272")]     // sin guión: se asume que ya es el cuerpo tal cual
+        public async Task ResolveAsync_ByRut_AcceptsSeveralInputFormats_MatchesBodyOnlyWitRut(string typedRut)
+        {
+            var contactId = Guid.NewGuid();
+            var contact = Contact(contactId, rut: "17175272"); // como lo guarda el tenant real: solo el cuerpo
+            var service = Service(contact);
+
+            var ctx = await SubjectResolver.ResolveAsync(service, typedRut, null, CancellationToken.None);
+
+            Assert.NotNull(ctx);
+            Assert.Equal(contactId, ctx.ContactId);
+        }
+
+        [Fact]
+        public async Task ResolveAsync_ByRut_ConcatenatedBodyAndDv_WithoutDash_DoesNotMatch()
+        {
+            // "171752728" (cuerpo+DV pegados sin guión) NO debe matchear "17175272" (solo
+            // cuerpo) — es exactamente el caso real que el usuario reportó como "la búsqueda no
+            // está funcionando bien": antes de este fix el código asumía (mal) que esto SÍ debía
+            // matchear.
+            var contact = Contact(Guid.NewGuid(), rut: "17175272");
+            var service = Service(contact);
+
+            var ctx = await SubjectResolver.ResolveAsync(service, "171752728", null, CancellationToken.None);
+
+            Assert.Null(ctx);
+        }
+
         [Fact]
         public async Task ResolveAsync_ByPasaporte_FindsSameContactAsRut()
         {
             var contactId = Guid.NewGuid();
             var casoId = Guid.NewGuid();
-            var contact = Contact(contactId, rut: "222222222", pasaporte: "BE316122", witCaso: casoId);
+            var contact = Contact(contactId, rut: "22222222", pasaporte: "BE316122", witCaso: casoId);
             var service = Service(contact);
 
             var byRut = await SubjectResolver.ResolveAsync(service, "22.222.222-2", null, CancellationToken.None);
@@ -106,7 +146,7 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
             var contactId = Guid.NewGuid();
             // Sin wit_caso, wit_eventoorigen, wit_colegio, wit_tramo, wit_ingresobrutofamiliar,
             // originatingleadid — ninguno seteado.
-            var contact = Contact(contactId, rut: "333333333");
+            var contact = Contact(contactId, rut: "33333333");
             var service = Service(contact);
 
             var ctx = await SubjectResolver.ResolveAsync(service, "33.333.333-3", null, CancellationToken.None);
@@ -124,7 +164,7 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
         [Fact]
         public async Task ResolveAsync_NoContactMatches_ReturnsNull_DoesNotThrow()
         {
-            var contact = Contact(Guid.NewGuid(), rut: "44.444.444-4");
+            var contact = Contact(Guid.NewGuid(), rut: "44444444");
             var service = Service(contact);
 
             var ctx = await SubjectResolver.ResolveAsync(service, "99.999.999-9", null, CancellationToken.None);
@@ -137,8 +177,8 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
         {
             var olderId = Guid.NewGuid();
             var newerId = Guid.NewGuid();
-            var older = Contact(olderId, rut: "555555555", modifiedOn: new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc));
-            var newer = Contact(newerId, rut: "555555555", modifiedOn: new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc));
+            var older = Contact(olderId, rut: "55555555", modifiedOn: new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+            var newer = Contact(newerId, rut: "55555555", modifiedOn: new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc));
             // Orden de inserción a propósito invertido para no depender de un orden estable que
             // "disimule" un bug de desempate.
             var service = Service(older, newer);
