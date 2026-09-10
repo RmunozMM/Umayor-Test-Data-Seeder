@@ -14,6 +14,7 @@ using Umayor.TestDataSeeder.Core.SubjectGraph;
 using Umayor.TestDataSeeder.XrmToolBox.Services;
 using McTools.Xrm.Connection;
 using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
 using Microsoft.Crm.Sdk.Messages;
 using XrmToolBox.Extensibility;
 using XrmToolBox.Extensibility.Interfaces;
@@ -47,6 +48,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
 
         private TextBox _rutBox, _pasaporteBox;
         private Button _btnPreview, _btnMigrate, _btnCancel;
+        private Button _btnDiagnoseAutomation;
         private TextBox _logBox;
 
         private CancellationTokenSource _currentOperationCts;
@@ -122,6 +124,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
             bool connected = _sourceService != null && _targetService != null;
             _btnPreview.Enabled = connected;
             _btnMigrate.Enabled = connected && _lastResolved != null;
+            _btnDiagnoseAutomation.Enabled = _targetService != null;
         }
 
         // --- Layout ---------------------------------------------------------------------------
@@ -234,6 +237,10 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
             _btnCancel.Enabled = false;
             row.Controls.Add(_btnCancel);
 
+            _btnDiagnoseAutomation = MakeButton("Diagnosticar Automatización en Target", OnDiagnoseAutomation);
+            _btnDiagnoseAutomation.Enabled = false;
+            row.Controls.Add(_btnDiagnoseAutomation);
+
             return row;
         }
 
@@ -262,6 +269,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
             var token = _currentOperationCts.Token;
             _btnPreview.Enabled = false;
             _btnMigrate.Enabled = false;
+            _btnDiagnoseAutomation.Enabled = false;
             _btnCancel.Enabled = true;
 
             WorkAsync(new WorkAsyncInfo
@@ -300,6 +308,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
                 {
                     _btnPreview.Enabled = true;
                     _btnCancel.Enabled = false;
+                    UpdateButtonState();
 
                     if (args.Error is OperationCanceledException) { AppendLog("Cancelado."); return; }
                     if (args.Error != null) { MessageBox.Show(args.Error.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
@@ -351,6 +360,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
             var token = _currentOperationCts.Token;
             _btnPreview.Enabled = false;
             _btnMigrate.Enabled = false;
+            _btnDiagnoseAutomation.Enabled = false;
             _btnCancel.Enabled = true;
 
             WorkAsync(new WorkAsyncInfo
@@ -421,6 +431,187 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
                         "Migración completa", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             });
+        }
+
+        /// <summary>
+        /// Diagnóstico de solo lectura contra Target: busca automatización (plugin steps y
+        /// workflows/reglas de negocio) registrada sobre el mensaje Create de phonecall/email/
+        /// wit_visitaweb. Existe porque en producción real la migración de esas 3 tablas falla con
+        /// "Entity 'SystemUser' With Id = ... Does Not Exist" sin que el GUID venga de nuestro
+        /// payload (se descartó forzando <c>ownerid</c> explícitamente) — la hipótesis que queda es
+        /// que algo registrado en Target sobre Create referencia un SystemUser inexistente en ese
+        /// entorno. El usuario no tiene el Plugin Trace Log habilitado ni maneja el Plugin
+        /// Registration Tool, así que esto reutiliza <see cref="_targetService"/> (ya autenticado)
+        /// en vez de pedir credenciales o herramientas externas. No toca Source ni el estado de la
+        /// migración — es puramente informativo.
+        /// </summary>
+        private void OnDiagnoseAutomation(object sender, EventArgs e)
+        {
+            _currentOperationCts = new CancellationTokenSource();
+            var token = _currentOperationCts.Token;
+            _btnPreview.Enabled = false;
+            _btnMigrate.Enabled = false;
+            _btnDiagnoseAutomation.Enabled = false;
+            _btnCancel.Enabled = true;
+
+            WorkAsync(new WorkAsyncInfo
+            {
+                Message = "Diagnosticando automatización registrada en Target...",
+                Work = (worker, args) =>
+                {
+                    AppendLog("=== DIAGNÓSTICO DE AUTOMATIZACIÓN EN TARGET (solo lectura, mensaje Create) ===");
+
+                    var tablesToCheck = new[] { "phonecall", "email", "wit_visitaweb" };
+                    foreach (var table in tablesToCheck)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        SetWorkingMessage($"Diagnosticando '{table}'...");
+                        AppendLog($"--- Tabla: {table} ---");
+                        DiagnosePluginStepsOnCreate(table);
+                        DiagnoseActiveWorkflowsOnCreate(table);
+                    }
+
+                    AppendLog("=== FIN DEL DIAGNÓSTICO DE AUTOMATIZACIÓN ===");
+                },
+                PostWorkCallBack = args =>
+                {
+                    _btnCancel.Enabled = false;
+                    UpdateButtonState();
+
+                    if (args.Error is OperationCanceledException) { AppendLog("Diagnóstico cancelado."); return; }
+                    if (args.Error != null) { MessageBox.Show(args.Error.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
+                }
+            });
+        }
+
+        /// <summary>
+        /// Plugin steps (sdkmessageprocessingstep) habilitados y registrados sobre el mensaje
+        /// Create, filtrados por tabla vía sdkmessagefilter.primaryobjecttypecode. Un segundo nivel
+        /// de join (plugintype -> pluginassembly, anidado con <see cref="LinkEntity.AddLink"/> sobre
+        /// el LinkEntity de plugintype, no sobre el QueryExpression) trae el nombre del tipo y del
+        /// ensamblado que lo contiene — firmas de AddLink/LinkEntity/AliasedValue confirmadas contra
+        /// el Microsoft.Xrm.Sdk.dll real de este repo antes de escribir esto.
+        /// </summary>
+        private void DiagnosePluginStepsOnCreate(string tableLogicalName)
+        {
+            try
+            {
+                var query = new QueryExpression("sdkmessageprocessingstep")
+                {
+                    ColumnSet = new ColumnSet("name", "stage", "mode")
+                };
+                query.Criteria.AddCondition("statecode", ConditionOperator.Equal, 0);
+
+                var messageLink = query.AddLink("sdkmessage", "sdkmessageid", "sdkmessageid", JoinOperator.Inner);
+                messageLink.LinkCriteria.AddCondition("name", ConditionOperator.Equal, "Create");
+
+                var filterLink = query.AddLink("sdkmessagefilter", "sdkmessagefilterid", "sdkmessagefilterid", JoinOperator.Inner);
+                filterLink.LinkCriteria.AddCondition("primaryobjecttypecode", ConditionOperator.Equal, tableLogicalName);
+
+                var pluginTypeLink = query.AddLink("plugintype", "plugintypeid", "plugintypeid", JoinOperator.Inner);
+                pluginTypeLink.EntityAlias = "plugintype";
+                pluginTypeLink.Columns = new ColumnSet("typename", "friendlyname");
+
+                var assemblyLink = pluginTypeLink.AddLink("pluginassembly", "pluginassemblyid", "pluginassemblyid", JoinOperator.Inner);
+                assemblyLink.EntityAlias = "assembly";
+                assemblyLink.Columns = new ColumnSet("name");
+
+                var result = _targetService.RetrieveMultiple(query);
+
+                if (result.Entities.Count == 0)
+                {
+                    AppendLog($"    plugin steps en Create: ningún plugin step registrado en Create para '{tableLogicalName}'.");
+                    return;
+                }
+
+                foreach (var record in result.Entities)
+                {
+                    var stepName = record.GetAttributeValue<string>("name") ?? "(sin nombre)";
+                    var stage = record.GetAttributeValue<OptionSetValue>("stage")?.Value;
+                    var mode = record.GetAttributeValue<OptionSetValue>("mode")?.Value;
+                    var typeName = record.GetAttributeValue<AliasedValue>("plugintype.typename")?.Value as string;
+                    var friendlyName = record.GetAttributeValue<AliasedValue>("plugintype.friendlyname")?.Value as string;
+                    var assemblyName = record.GetAttributeValue<AliasedValue>("assembly.name")?.Value as string;
+
+                    AppendLog($"    plugin step '{stepName}': tipo='{friendlyName ?? typeName ?? "?"}' ({typeName ?? "?"}), ensamblado='{assemblyName ?? "?"}', stage={DescribePluginStage(stage)}, mode={DescribePluginMode(mode)}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"    no se pudo consultar plugin steps en Create para '{tableLogicalName}': {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Workflows/reglas de negocio activos (statecode=1 Activated) que disparan en Create
+        /// (triggeroncreate=true) sobre la tabla dada.
+        /// </summary>
+        private void DiagnoseActiveWorkflowsOnCreate(string primaryEntity)
+        {
+            try
+            {
+                var query = new QueryExpression("workflow")
+                {
+                    ColumnSet = new ColumnSet("name", "category")
+                };
+                query.Criteria.AddCondition("statecode", ConditionOperator.Equal, 1); // Activated
+                query.Criteria.AddCondition("triggeroncreate", ConditionOperator.Equal, true);
+                query.Criteria.AddCondition("primaryentity", ConditionOperator.Equal, primaryEntity);
+
+                var result = _targetService.RetrieveMultiple(query);
+
+                if (result.Entities.Count == 0)
+                {
+                    AppendLog($"    workflows/reglas de negocio activos en Create: ningún workflow activo para '{primaryEntity}'.");
+                    return;
+                }
+
+                foreach (var record in result.Entities)
+                {
+                    var name = record.GetAttributeValue<string>("name") ?? "(sin nombre)";
+                    var category = record.GetAttributeValue<OptionSetValue>("category")?.Value;
+                    AppendLog($"    workflow/regla activo en Create '{name}': categoría={DescribeWorkflowCategory(category)}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"    no se pudo consultar workflows activos en Create para '{primaryEntity}': {ex.Message}");
+            }
+        }
+
+        private static string DescribePluginStage(int? stage)
+        {
+            switch (stage)
+            {
+                case 10: return "Pre-validation";
+                case 20: return "Pre-operation";
+                case 40: return "Post-operation";
+                default: return stage?.ToString() ?? "?";
+            }
+        }
+
+        private static string DescribePluginMode(int? mode)
+        {
+            switch (mode)
+            {
+                case 0: return "Sync";
+                case 1: return "Async";
+                default: return mode?.ToString() ?? "?";
+            }
+        }
+
+        private static string DescribeWorkflowCategory(int? category)
+        {
+            switch (category)
+            {
+                case 0: return "Workflow";
+                case 1: return "Dialog";
+                case 2: return "Regla de negocio (Business Rule)";
+                case 3: return "Action";
+                case 4: return "Business Process Flow";
+                case 5: return "Modern Flow (Power Automate)";
+                default: return category?.ToString() ?? "?";
+            }
         }
 
         /// <summary>
