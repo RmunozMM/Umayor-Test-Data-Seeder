@@ -68,6 +68,36 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
             string relationshipSchemaName, DataReference from, IReadOnlyList<DataReference> to, CancellationToken cancellationToken)
             => throw new NotSupportedException("FakeSourceRecordService no soporta AssociateAsync (SubjectGraph solo lee de Source).");
 
+        /// <summary>
+        /// A diferencia del resto de los métodos de escritura (no soportados, porque este fake
+        /// representa Source), este SÍ tiene una implementación real: lo usan los tests de
+        /// <c>SubjectTargetCleaner</c>, que necesitan un <see cref="IDataverseRecordService"/>
+        /// "de Target" funcional para verificar el borrado. Idempotente por diseño (igual que pide
+        /// el doc-comment de la interfaz): borrar un id que no está en <c>_data</c> también cuenta
+        /// como éxito.
+        /// </summary>
+        public Task<IReadOnlyList<RecordOperationResult>> DeleteBatchAsync(
+            string logicalName, IReadOnlyList<Guid> ids, CancellationToken cancellationToken)
+        {
+            var results = new List<RecordOperationResult>();
+
+            _data.TryGetValue(logicalName, out var list);
+
+            foreach (var id in ids ?? new List<Guid>())
+            {
+                list?.RemoveAll(r => r.Id == id);
+                results.Add(new RecordOperationResult
+                {
+                    RecordId = id,
+                    TableLogicalName = logicalName,
+                    Operation = RecordOperation.Delete,
+                    Outcome = RecordOutcome.Succeeded
+                });
+            }
+
+            return Task.FromResult<IReadOnlyList<RecordOperationResult>>(results);
+        }
+
         /// <summary>Expuesto como público y estático para que los tests puedan probar el
         /// resultado de un <see cref="RecordFilter"/> armado por <c>SubjectRelationshipMap</c>
         /// directamente contra un <see cref="DataRecord"/> puntual, sin pasar por una tabla

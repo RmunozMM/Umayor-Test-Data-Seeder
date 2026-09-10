@@ -211,14 +211,19 @@ namespace Umayor.TestDataSeeder.XrmToolBox.Services
             }
             catch (System.ServiceModel.FaultException<Microsoft.Xrm.Sdk.OrganizationServiceFault>)
             {
-                // Bug real: un lookup externo puede apuntar a un tipo de entidad que Dataverse
-                // rechaza de plano para CUALQUIER Retrieve genérico (p. ej. "attachment" —
-                // "The 'Retrieve' method does not support entities of type 'attachment'", un
-                // tipo interno, no un simple "no encontrado"). Antes solo se toleraba el fault
-                // específico de "no existe" — cualquier otro fault se propagaba y abortaba TODA
-                // la migración. RemoveSkipSilentlyLookupsAsync (único llamador real acá) trata
-                // "false" como "no se puede resolver, omitir del payload" — correcto también
-                // cuando ni siquiera se pudo consultar el tipo de entidad.
+                // Bug real: un lookup externo al perfil puede apuntar a un tipo de entidad que
+                // Dataverse rechaza de plano para CUALQUIER Retrieve genérico (p. ej. "attachment"
+                // — "The 'Retrieve' method does not support entities of type 'attachment'", un
+                // tipo interno/restringido, no un simple "no encontrado"). Antes solo se toleraba
+                // el fault específico de "no existe" (IsNotFoundFault) — cualquier OTRO fault acá
+                // (incluido este) se propagaba sin capturar y abortaba la migración COMPLETA, no
+                // solo ese atributo puntual. Los dos únicos llamadores de ExistsAsync
+                // (RemoveSkipSilentlyLookupsAsync, ExternalLookupSampler) tratan "false" como
+                // "no se puede confirmar/resolver este valor externo" — exactamente el
+                // comportamiento correcto acá también: si ni siquiera se puede consultar el tipo
+                // de entidad, tratarlo como no resuelto (SkipSilently lo omite del payload) en vez
+                // de tumbar todo. Ya no se distingue "genuinamente no existe" de "no se pudo
+                // consultar" porque ningún llamador necesita esa distinción.
                 return Task.FromResult(false);
             }
         }
@@ -285,6 +290,80 @@ namespace Umayor.TestDataSeeder.XrmToolBox.Services
             }
 
             return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<RecordOperationResult>> DeleteBatchAsync(
+            string logicalName,
+            IReadOnlyList<Guid> ids,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (ids == null || ids.Count == 0)
+                return Task.FromResult<IReadOnlyList<RecordOperationResult>>(new List<RecordOperationResult>());
+
+            var requestCollection = new OrganizationRequestCollection();
+            foreach (var id in ids)
+            {
+                requestCollection.Add(new DeleteRequest { Target = new EntityReference(logicalName, id) });
+            }
+
+            var executeMultiple = new ExecuteMultipleRequest
+            {
+                Settings = new ExecuteMultipleSettings { ContinueOnError = true, ReturnResponses = true },
+                Requests = requestCollection
+            };
+
+            var response = (ExecuteMultipleResponse)_service.Execute(executeMultiple);
+            var results = new List<RecordOperationResult>();
+
+            for (int i = 0; i < ids.Count; i++)
+            {
+                var id = ids[i];
+                var itemResponse = response.Responses.FirstOrDefault(r => r.RequestIndex == i);
+
+                if (itemResponse?.Fault != null)
+                {
+                    // Idempotencia: borrar un registro que ya no existe cuenta como éxito — el
+                    // objetivo ("este registro no está en Target") ya se cumple, igual criterio
+                    // que WriteBulkCreateThenUpdate usa para decidir create-vs-update.
+                    if (IsNotFoundFault(itemResponse.Fault))
+                    {
+                        results.Add(new RecordOperationResult
+                        {
+                            RecordId = id,
+                            TableLogicalName = logicalName,
+                            Operation = RecordOperation.Delete,
+                            Outcome = RecordOutcome.Succeeded
+                        });
+                        continue;
+                    }
+
+                    ClassifyFault(itemResponse.Fault, out var isTransient, out var retryAfter);
+                    results.Add(new RecordOperationResult
+                    {
+                        RecordId = id,
+                        TableLogicalName = logicalName,
+                        Operation = RecordOperation.Delete,
+                        Outcome = RecordOutcome.Failed,
+                        ErrorMessage = itemResponse.Fault.Message,
+                        IsTransient = isTransient,
+                        RetryAfterHint = retryAfter
+                    });
+                }
+                else
+                {
+                    results.Add(new RecordOperationResult
+                    {
+                        RecordId = id,
+                        TableLogicalName = logicalName,
+                        Operation = RecordOperation.Delete,
+                        Outcome = RecordOutcome.Succeeded
+                    });
+                }
+            }
+
+            return Task.FromResult<IReadOnlyList<RecordOperationResult>>(results);
         }
 
         // ---- helpers -------------------------------------------------------------------
@@ -540,9 +619,14 @@ namespace Umayor.TestDataSeeder.XrmToolBox.Services
 
         private static bool IsNotFoundFault(System.ServiceModel.FaultException<Microsoft.Xrm.Sdk.OrganizationServiceFault> ex)
         {
+            return IsNotFoundFault(ex.Detail);
+        }
+
+        private static bool IsNotFoundFault(Microsoft.Xrm.Sdk.OrganizationServiceFault fault)
+        {
             // Error code 0x80040217 (-2147220969) is Dataverse's "record does not exist".
             // Matching by ErrorCode rather than message text since messages are localized.
-            return ex.Detail?.ErrorCode == unchecked((int)0x80040217);
+            return fault?.ErrorCode == unchecked((int)0x80040217);
         }
 
         private static bool IsDuplicateAssociationFault(System.ServiceModel.FaultException<Microsoft.Xrm.Sdk.OrganizationServiceFault> ex)

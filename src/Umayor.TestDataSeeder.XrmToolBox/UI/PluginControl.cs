@@ -49,6 +49,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
         private TextBox _rutBox, _pasaporteBox;
         private Button _btnPreview, _btnMigrate, _btnCancel;
         private Button _btnDiagnoseAutomation, _btnClearLog;
+        private Button _btnDeleteFromTarget;
         private TextBox _logBox;
 
         private CancellationTokenSource _currentOperationCts;
@@ -125,6 +126,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
             _btnPreview.Enabled = connected;
             _btnMigrate.Enabled = connected && _lastResolved != null;
             _btnDiagnoseAutomation.Enabled = _targetService != null;
+            _btnDeleteFromTarget.Enabled = connected && _lastResolved != null;
         }
 
         // --- Layout ---------------------------------------------------------------------------
@@ -241,6 +243,10 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
             _btnDiagnoseAutomation.Enabled = false;
             row.Controls.Add(_btnDiagnoseAutomation);
 
+            _btnDeleteFromTarget = MakeButton("Eliminar del Target", OnDeleteFromTarget);
+            _btnDeleteFromTarget.Enabled = false;
+            row.Controls.Add(_btnDeleteFromTarget);
+
             _btnClearLog = MakeButton("Limpiar Log", OnClearLog);
             row.Controls.Add(_btnClearLog);
 
@@ -275,6 +281,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
             _btnPreview.Enabled = false;
             _btnMigrate.Enabled = false;
             _btnDiagnoseAutomation.Enabled = false;
+            _btnDeleteFromTarget.Enabled = false;
             _btnCancel.Enabled = true;
 
             WorkAsync(new WorkAsyncInfo
@@ -366,6 +373,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
             _btnPreview.Enabled = false;
             _btnMigrate.Enabled = false;
             _btnDiagnoseAutomation.Enabled = false;
+            _btnDeleteFromTarget.Enabled = false;
             _btnCancel.Enabled = true;
 
             WorkAsync(new WorkAsyncInfo
@@ -457,6 +465,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
             _btnPreview.Enabled = false;
             _btnMigrate.Enabled = false;
             _btnDiagnoseAutomation.Enabled = false;
+            _btnDeleteFromTarget.Enabled = false;
             _btnCancel.Enabled = true;
 
             WorkAsync(new WorkAsyncInfo
@@ -485,6 +494,81 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
 
                     if (args.Error is OperationCanceledException) { AppendLog("Diagnóstico cancelado."); return; }
                     if (args.Error != null) { MessageBox.Show(args.Error.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
+                }
+            });
+        }
+
+        /// <summary>
+        /// Operación DESTRUCTIVA e IRREVERSIBLE: borra en TARGET (nunca en Source) todos los
+        /// registros de las tablas del mapa que pertenezcan al sujeto ya resuelto (mismo
+        /// <see cref="_lastResolved"/> que usan Preview/Migrar), para poder re-testear el mismo
+        /// RUT/pasaporte desde cero contra Target sin arrastrar datos parciales/duplicados de
+        /// corridas anteriores (Migrar usa Upsert, así que corridas con fallas parciales dejan
+        /// residuos). Requiere confirmación explícita con "No" como opción por defecto.
+        /// </summary>
+        private void OnDeleteFromTarget(object sender, EventArgs e)
+        {
+            if (_lastResolved == null) return;
+
+            if (MessageBox.Show(
+                    $"Esta acción es IRREVERSIBLE: va a ELIMINAR de forma permanente (sin papelera de reciclaje) todos los registros en TARGET del sujeto contactid={_lastResolved.Context.ContactId} en las tablas del mapa de relaciones.\n\nSource NUNCA se toca.\n\n¿Confirmas la eliminación?",
+                    "Confirmar eliminación en Target",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            {
+                return;
+            }
+
+            _currentOperationCts = new CancellationTokenSource();
+            var token = _currentOperationCts.Token;
+            _btnPreview.Enabled = false;
+            _btnMigrate.Enabled = false;
+            _btnDiagnoseAutomation.Enabled = false;
+            _btnDeleteFromTarget.Enabled = false;
+            _btnCancel.Enabled = true;
+
+            WorkAsync(new WorkAsyncInfo
+            {
+                Message = "Eliminando datos del sujeto en Target...",
+                Work = (worker, args) =>
+                {
+                    var profile = _lastResolved.Profile;
+
+                    AppendLog($"=== ELIMINANDO DE TARGET (irreversible): contactid={_lastResolved.Context.ContactId} ===");
+
+                    SetWorkingMessage("Cargando metadata de las tablas del mapa de relaciones...");
+                    var targetTables = LoadTableMetadata(profile, _targetMetadata, token);
+
+                    var results = SubjectTargetCleaner.DeleteFromTargetAsync(
+                        profile, targetTables, _targetRecords, msg => AppendLog(msg), token)
+                        .GetAwaiter().GetResult();
+
+                    args.Result = results;
+                },
+                PostWorkCallBack = args =>
+                {
+                    _btnCancel.Enabled = false;
+                    UpdateButtonState();
+
+                    if (args.Error is OperationCanceledException) { AppendLog("Eliminación cancelada."); return; }
+                    if (args.Error != null) { MessageBox.Show(args.Error.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
+
+                    var results = (System.Collections.Generic.IReadOnlyList<TableCleanupResult>)args.Result;
+                    var totalDeleted = results.Sum(r => r.Deleted);
+                    var totalFailed = results.Sum(r => r.Failed);
+
+                    foreach (var r in results)
+                    {
+                        if (r.Deleted > 0 || r.Failed > 0)
+                            AppendLog($"{r.LogicalName}: {r.Deleted} eliminado(s), {r.Failed} fallido(s).");
+                        foreach (var err in r.SampleErrors)
+                            AppendLog($"    ↳ {r.LogicalName}: {err}");
+                    }
+
+                    AppendLog($"=== ELIMINACIÓN EN TARGET COMPLETA: {totalDeleted} eliminados, {totalFailed} fallidos. ===");
+                    MessageBox.Show($"Listo. {totalDeleted} eliminados, {totalFailed} fallidos en Target.",
+                        "Eliminación completa", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
             });
         }
