@@ -46,9 +46,9 @@ namespace Umayor.TestDataSeeder.Core.SubjectGraph
 
             var filter = new RecordFilter { LogicalOperator = FilterLogicalOperator.Or };
             if (!string.IsNullOrWhiteSpace(rut))
-                filter.Conditions.Add(new FilterCondition { AttributeName = "wit_rut", Operator = FilterOperator.Equal, Value = rut });
+                filter.Conditions.Add(new FilterCondition { AttributeName = "wit_rut", Operator = FilterOperator.Equal, Value = NormalizeRut(rut) });
             if (!string.IsNullOrWhiteSpace(pasaporte))
-                filter.Conditions.Add(new FilterCondition { AttributeName = "wit_pasaporte", Operator = FilterOperator.Equal, Value = pasaporte });
+                filter.Conditions.Add(new FilterCondition { AttributeName = "wit_pasaporte", Operator = FilterOperator.Equal, Value = pasaporte.Trim() });
 
             var candidates = new List<DataRecord>();
             string pageToken = null;
@@ -88,5 +88,16 @@ namespace Umayor.TestDataSeeder.Core.SubjectGraph
 
         private static Guid? ReferenceId(DataRecord record, string attributeName)
             => record.TryGetValue<DataReference>(attributeName, out var reference) ? reference.Id : (Guid?)null;
+
+        /// <summary>Quita puntos, guiones y espacios, y deja el dígito verificador en mayúscula
+        /// ('k' → 'K') — <c>contact.wit_rut</c> en el tenant real de Umayor guarda el RUT
+        /// completo (cuerpo + dígito verificador) concatenado sin separador, p. ej. "171752728"
+        /// para 17.175.272-8; esto deja que el usuario tipee con o sin puntos/guión en la UI.</summary>
+        internal static string NormalizeRut(string rut)
+        {
+            if (string.IsNullOrWhiteSpace(rut)) return rut;
+            var chars = rut.Where(c => c != '.' && c != '-' && !char.IsWhiteSpace(c)).ToArray();
+            return new string(chars).ToUpperInvariant();
+        }
     }
 }

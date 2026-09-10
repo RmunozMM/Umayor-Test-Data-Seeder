@@ -58,7 +58,7 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
 
             var contact = Contact(
                 contactId,
-                rut: "11.111.111-1",
+                rut: "111111111", // sin puntos/guión: así lo guarda contact.wit_rut en el tenant real (ver SubjectResolver.NormalizeRut)
                 originatingLeadId: leadId,
                 witCaso: casoId,
                 witEventoOrigen: eventoId,
@@ -68,11 +68,13 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
 
             var service = Service(contact);
 
+            // Búsqueda CON puntos/guión: prueba que NormalizeRut la deja apta para matchear el
+            // valor sin puntuación que realmente guarda contact.wit_rut.
             var ctx = await SubjectResolver.ResolveAsync(service, "11.111.111-1", null, CancellationToken.None);
 
             Assert.NotNull(ctx);
             Assert.Equal(contactId, ctx.ContactId);
-            Assert.Equal("11.111.111-1", ctx.Rut);
+            Assert.Equal("111111111", ctx.Rut);
             Assert.Equal(leadId, ctx.OriginatingLeadId);
             Assert.Equal(casoId, ctx.WitCaso);
             Assert.Equal(eventoId, ctx.WitEventoOrigen);
@@ -86,7 +88,7 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
         {
             var contactId = Guid.NewGuid();
             var casoId = Guid.NewGuid();
-            var contact = Contact(contactId, rut: "22.222.222-2", pasaporte: "BE316122", witCaso: casoId);
+            var contact = Contact(contactId, rut: "222222222", pasaporte: "BE316122", witCaso: casoId);
             var service = Service(contact);
 
             var byRut = await SubjectResolver.ResolveAsync(service, "22.222.222-2", null, CancellationToken.None);
@@ -104,7 +106,7 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
             var contactId = Guid.NewGuid();
             // Sin wit_caso, wit_eventoorigen, wit_colegio, wit_tramo, wit_ingresobrutofamiliar,
             // originatingleadid — ninguno seteado.
-            var contact = Contact(contactId, rut: "33.333.333-3");
+            var contact = Contact(contactId, rut: "333333333");
             var service = Service(contact);
 
             var ctx = await SubjectResolver.ResolveAsync(service, "33.333.333-3", null, CancellationToken.None);
@@ -135,8 +137,8 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
         {
             var olderId = Guid.NewGuid();
             var newerId = Guid.NewGuid();
-            var older = Contact(olderId, rut: "55.555.555-5", modifiedOn: new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc));
-            var newer = Contact(newerId, rut: "55.555.555-5", modifiedOn: new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc));
+            var older = Contact(olderId, rut: "555555555", modifiedOn: new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+            var newer = Contact(newerId, rut: "555555555", modifiedOn: new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc));
             // Orden de inserción a propósito invertido para no depender de un orden estable que
             // "disimule" un bug de desempate.
             var service = Service(older, newer);

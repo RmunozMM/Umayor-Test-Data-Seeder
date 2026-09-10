@@ -153,7 +153,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
 
         private Control BuildConnectionsRow()
         {
-            var row = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 3, RowCount = 1, AutoSize = true, Height = 130 };
+            var row = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 3, RowCount = 1, Height = 170, Padding = new Padding(0, 0, 0, 10) };
             row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 46));
             row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 8));
             row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 46));
@@ -181,19 +181,19 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
 
         private static Panel BuildConnectionCard(string title, out System.Windows.Forms.Label detailLabel, out Panel statusDot, out Button actionButton, string buttonText)
         {
-            var card = new Panel { Dock = DockStyle.Fill, BorderStyle = BorderStyle.FixedSingle, Padding = new Padding(12), BackColor = Color.White };
+            var card = new Panel { Dock = DockStyle.Fill, BorderStyle = BorderStyle.FixedSingle, Padding = new Padding(18), BackColor = Color.White };
 
             var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3 };
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 16));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 18));
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 66));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
 
-            var dot = new Panel { Size = new Size(12, 12), BackColor = Color.Silver, Margin = new Padding(2, 5, 0, 0) };
-            var titleLabel = new System.Windows.Forms.Label { Text = title, Font = new Font(FontFamily.GenericSansSerif, 10, FontStyle.Bold), Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
-            var detail = new System.Windows.Forms.Label { Text = "Not connected", Dock = DockStyle.Fill, TextAlign = ContentAlignment.TopLeft, Padding = new Padding(0, 6, 0, 6), ForeColor = Color.DimGray };
-            var button = new Button { Text = buttonText, Dock = DockStyle.Fill, Height = 28 };
+            var dot = new Panel { Size = new Size(12, 12), BackColor = Color.Silver, Margin = new Padding(2, 7, 0, 0) };
+            var titleLabel = new System.Windows.Forms.Label { Text = title, Font = new Font(FontFamily.GenericSansSerif, 11, FontStyle.Bold), Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft };
+            var detail = new System.Windows.Forms.Label { Text = "Not connected", Dock = DockStyle.Fill, TextAlign = ContentAlignment.TopLeft, Padding = new Padding(0, 8, 0, 8), ForeColor = Color.DimGray };
+            var button = new Button { Text = buttonText, Dock = DockStyle.Fill, Height = 30, Margin = new Padding(0, 4, 0, 0) };
 
             layout.Controls.Add(dot, 0, 0);
             layout.Controls.Add(titleLabel, 1, 0);
@@ -211,29 +211,43 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
 
         private Control BuildSubjectRow()
         {
-            var row = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 6, RowCount = 1, AutoSize = true, Padding = new Padding(0, 10, 0, 10) };
+            var outer = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, RowCount = 2, AutoSize = true, Padding = new Padding(0, 4, 0, 14) };
 
-            row.Controls.Add(new System.Windows.Forms.Label { Text = "RUT:", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 6, 4, 0) });
-            _rutBox = new TextBox { Width = 120, Margin = new Padding(0, 3, 15, 0) };
-            row.Controls.Add(_rutBox);
+            var inputRow = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 6, RowCount = 1, AutoSize = true, Padding = new Padding(0, 8, 0, 4) };
 
-            row.Controls.Add(new System.Windows.Forms.Label { Text = "Pasaporte:", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 6, 4, 0) });
-            _pasaporteBox = new TextBox { Width = 120, Margin = new Padding(0, 3, 15, 0) };
-            row.Controls.Add(_pasaporteBox);
+            inputRow.Controls.Add(new System.Windows.Forms.Label { Text = "RUT:", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 8, 6, 0) });
+            _rutBox = new TextBox { Width = 130, Margin = new Padding(0, 5, 20, 0) };
+            inputRow.Controls.Add(_rutBox);
+
+            inputRow.Controls.Add(new System.Windows.Forms.Label { Text = "Pasaporte:", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 8, 6, 0) });
+            _pasaporteBox = new TextBox { Width = 130, Margin = new Padding(0, 5, 20, 0) };
+            inputRow.Controls.Add(_pasaporteBox);
 
             _btnPreview = MakeButton("Resolver y Previsualizar", OnPreview);
             _btnPreview.Enabled = false;
-            row.Controls.Add(_btnPreview);
+            inputRow.Controls.Add(_btnPreview);
 
             _btnMigrate = MakeButton("Migrar (anonimizado)", OnMigrate);
             _btnMigrate.Enabled = false;
-            row.Controls.Add(_btnMigrate);
+            inputRow.Controls.Add(_btnMigrate);
 
             _btnCancel = MakeButton("Cancel", OnCancel);
             _btnCancel.Enabled = false;
-            row.Controls.Add(_btnCancel);
+            inputRow.Controls.Add(_btnCancel);
 
-            return row;
+            var hint = new System.Windows.Forms.Label
+            {
+                Text = "RUT: con o sin puntos/guión, con o sin dígito verificador (se acepta cualquiera de los dos formatos).",
+                AutoSize = true,
+                Dock = DockStyle.Top,
+                ForeColor = Color.DimGray,
+                Font = new Font(FontFamily.GenericSansSerif, 8, FontStyle.Italic),
+                Margin = new Padding(0, 0, 0, 0)
+            };
+
+            outer.Controls.Add(inputRow, 0, 0);
+            outer.Controls.Add(hint, 0, 1);
+            return outer;
         }
 
         private static Button MakeButton(string text, EventHandler onClick)
