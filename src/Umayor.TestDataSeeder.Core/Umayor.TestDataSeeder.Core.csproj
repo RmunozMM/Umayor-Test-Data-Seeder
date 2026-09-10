@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Umayor.TestDataSeeder.Core</RootNamespace>
+    <AssemblyName>Umayor.TestDataSeeder.Core</AssemblyName>
+  </PropertyGroup>
+
+  <!-- Referencia por path relativo al Core del repo hermano público (Dataverse Master Data
+       Migrator) — mismo motor de escritura/retry/manifest, sin forkearlo. Ambos repos viven en
+       la misma máquina, bajo la misma carpeta de trabajo (C:\CT\Master Data Migration). -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\DataverseMasterDataMigrator\src\DataverseMasterDataMigrator.Core\DataverseMasterDataMigrator.Core.csproj" />
+  </ItemGroup>
+
+</Project>
