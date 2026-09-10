@@ -113,15 +113,20 @@ namespace Umayor.TestDataSeeder.Core.SubjectGraph
         /// <summary>Bug real encontrado en vivo: <c>activitymimeattachment</c> falla al crear con
         /// "The attachment cannot be saved. Either specify activityId or ObjectTypeCode &amp;
         /// ObjectId." — Dataverse exige EXACTAMENTE una de las dos vías para identificar a qué
-        /// actividad pertenece el adjunto, nunca ambas. El diagnóstico en vivo (ver
-        /// PluginControl.DiagnoseEntityNotFoundFailures) confirmó que el registro real trae tanto
-        /// <c>objectid</c> como <c>activityid</c> apuntando al mismo email — la metadata genérica
-        /// no distingue esto, así que <c>AttributeWritabilityRules.GetWritableAttributes</c>
-        /// escribe ambos. Se excluye <c>objectid</c> (dejando solo <c>activityid</c>, la vía
-        /// correcta para adjuntos de actividades como email) SOLO para esta tabla.</summary>
+        /// actividad pertenece el adjunto, nunca ambas. El diagnóstico en vivo confirmó que el
+        /// registro real trae tanto <c>objectid</c> como <c>activityid</c> apuntando al mismo
+        /// email — la metadata genérica no distingue esto, así que
+        /// <c>AttributeWritabilityRules.GetWritableAttributes</c> escribe ambos.
+        /// PRIMER INTENTO (real, revertido): excluir <c>objectid</c> y dejar solo
+        /// <c>activityid</c> — cambió el error a "The attachment cannot be saved. The ObjectID is
+        /// missing.", confirmando en vivo que en ESTE tenant la vía válida es la de
+        /// <c>ObjectTypeCode</c>+<c>ObjectId</c>, no <c>activityid</c>. Se excluye
+        /// <c>activityid</c> en su lugar (dejando <c>objectid</c>, que viaja junto con
+        /// <c>objecttypecode</c> como atributo normal no-lookup, sin necesidad de exclusión
+        /// propia) SOLO para esta tabla.</summary>
         private static List<string> BuildExcludedAttributes(string logicalName)
             => string.Equals(logicalName, "activitymimeattachment", StringComparison.OrdinalIgnoreCase)
-                ? new List<string> { "objectid" }
+                ? new List<string> { "activityid" }
                 : new List<string>();
 
         private static bool IsEmpty(RecordFilter filter)
