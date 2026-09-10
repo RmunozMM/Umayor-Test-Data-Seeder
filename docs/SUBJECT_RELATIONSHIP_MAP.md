@@ -132,6 +132,22 @@ dejó deliberadamente fuera de alcance, por ser una decisión delicada), acá la
 herramienta. `SubjectProfileBuilder` fija `RequiredLookupPolicy = OptionalLookupPolicy =
 SkipSilently` siempre, sin exponer ninguna opción en la UI para cambiarlo.
 
+## `activitymimeattachment` necesita un empujón de dependencia manual
+
+Bug real: `activitymimeattachment` corría ANTES que `email` (que todavía no existía en Target),
+porque la metadata real de Dataverse declara su lookup `objectid` apuntando al tipo abstracto
+POLIMÓRFICO `activitypointer` — no a "email" concretamente. `DependencyGraphBuilder` (Core,
+correcto en general) solo arma una arista de dependencia si el `LookupTarget` declarado está
+entre las tablas del perfil; como `activitypointer` quedó excluido de la escritura, nunca se
+generaba ninguna arista real hacia `email`, y `activitymimeattachment` quedaba sin ninguna
+restricción de orden — el algoritmo de Kahn lo liberaba en la primera ronda, junto con cualquier
+otra tabla sin dependencias.
+
+`PluginControl.PatchActivityMimeAttachmentDependency` agrega "email" al `LookupTargets` ya
+declarado de `objectid` después de cargar la metadata (sin tocar la lógica genérica del grafo de
+dependencias compartido) — conocimiento de dominio que la metadata genérica de Dataverse no
+puede expresar, pero que este mapa (fila 18) ya documentaba.
+
 ## Regla de fidelidad
 
 Este mapa debe seguir siendo un superconjunto o igual al SQL de referencia — nunca un

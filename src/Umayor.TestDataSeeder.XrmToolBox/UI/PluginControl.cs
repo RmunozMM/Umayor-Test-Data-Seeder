@@ -421,7 +421,35 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
                 try { tables[entity.LogicalName] = metadata.GetTableDetailAsync(entity.LogicalName, CancellationToken.None).GetAwaiter().GetResult(); }
                 catch { /* tabla ausente en este ambiente — el motor ya maneja esto de forma defensiva */ }
             }
+
+            PatchActivityMimeAttachmentDependency(tables);
             return tables;
+        }
+
+        /// <summary>
+        /// Bug real encontrado en vivo: <c>activitymimeattachment</c> corría ANTES que
+        /// <c>email</c> (el correo todavía no existía en Target), porque la metadata real de
+        /// Dataverse declara el lookup <c>objectid</c> apuntando al tipo abstracto POLIMÓRFICO
+        /// <c>activitypointer</c> — no a "email" concretamente. <see cref="DependencyGraphBuilder"/>
+        /// (Core, correcto en general) solo arma una arista de dependencia si el LookupTarget
+        /// declarado está entre las tablas del perfil; como <c>activitypointer</c> quedó excluido
+        /// de la escritura (no se puede crear directamente en Dataverse — ver
+        /// docs/SUBJECT_RELATIONSHIP_MAP.md), nunca se generaba ninguna arista hacia "email", y
+        /// <c>activitymimeattachment</c> quedaba sin ninguna restricción de orden.
+        /// docs/SUBJECT_RELATIONSHIP_MAP.md (fila 18) ya documenta que, en el alcance de ESTE
+        /// mapa, <c>objectid</c> siempre apunta a un <c>email</c> — conocimiento de dominio que la
+        /// metadata genérica de Dataverse no puede expresar. Se agrega "email" al LookupTargets
+        /// ya declarado (no se reemplaza) para que el grafo de dependencias compartido lo capte
+        /// sin tocar su lógica genérica.
+        /// </summary>
+        private static void PatchActivityMimeAttachmentDependency(Dictionary<string, TableSummary> tables)
+        {
+            if (!tables.TryGetValue("activitymimeattachment", out var table)) return;
+            var objectIdAttribute = table.Attributes.FirstOrDefault(a => string.Equals(a.LogicalName, "objectid", StringComparison.OrdinalIgnoreCase));
+            if (objectIdAttribute == null) return;
+            if (objectIdAttribute.LookupTargets.Any(t => string.Equals(t, "email", StringComparison.OrdinalIgnoreCase))) return;
+
+            objectIdAttribute.LookupTargets = objectIdAttribute.LookupTargets.Concat(new[] { "email" }).ToList();
         }
 
         private void AppendLog(string message)
