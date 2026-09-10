@@ -209,9 +209,16 @@ namespace Umayor.TestDataSeeder.XrmToolBox.Services
                 _service.Retrieve(reference.LogicalName, reference.Id, new ColumnSet(false));
                 return Task.FromResult(true);
             }
-            catch (System.ServiceModel.FaultException<Microsoft.Xrm.Sdk.OrganizationServiceFault> ex)
-                when (IsNotFoundFault(ex))
+            catch (System.ServiceModel.FaultException<Microsoft.Xrm.Sdk.OrganizationServiceFault>)
             {
+                // Bug real: un lookup externo puede apuntar a un tipo de entidad que Dataverse
+                // rechaza de plano para CUALQUIER Retrieve genérico (p. ej. "attachment" —
+                // "The 'Retrieve' method does not support entities of type 'attachment'", un
+                // tipo interno, no un simple "no encontrado"). Antes solo se toleraba el fault
+                // específico de "no existe" — cualquier otro fault se propagaba y abortaba TODA
+                // la migración. RemoveSkipSilentlyLookupsAsync (único llamador real acá) trata
+                // "false" como "no se puede resolver, omitir del payload" — correcto también
+                // cuando ni siquiera se pudo consultar el tipo de entidad.
                 return Task.FromResult(false);
             }
         }
