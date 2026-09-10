@@ -32,7 +32,7 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
         }
 
         [Fact]
-        public async Task BuildAsync_MatchingContact_ProducesOneEntityPerDocumentedTable_AllEnabled()
+        public async Task BuildAsync_MatchingContact_ProducesOneEntityPerDocumentedTable()
         {
             var contactId = Guid.NewGuid();
             var contact = new DataRecord("contact", contactId);
@@ -49,11 +49,70 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
             Assert.NotNull(result);
             Assert.Equal(contactId, result.Context.ContactId);
             Assert.Equal(28, result.Profile.Entities.Count);
-            Assert.All(result.Profile.Entities, e => Assert.True(e.Enabled));
             Assert.All(result.Profile.Entities, e => Assert.NotNull(e.Filter));
             Assert.Equal(
                 SubjectRelationshipMap.Rules.Select(r => r.LogicalName),
                 result.Profile.Entities.Select(e => e.LogicalName));
+        }
+
+        /// <summary>
+        /// Regresión de un crash real: "The 'Create' method does not support entities of type
+        /// 'activitypointer'" / "...'activityparty'" — Dataverse no permite crear directamente
+        /// ninguna de las dos (activitypointer es la vista base polimórfica de cualquier
+        /// actividad concreta ya migrada por separado; activityparty se crea implícitamente al
+        /// setear los campos to/from de una actividad). Deben quedar en el perfil pero
+        /// deshabilitadas — el resto de las 26 tablas sigue habilitado.
+        /// </summary>
+        [Fact]
+        public async Task BuildAsync_ActivityPointerAndActivityParty_AreDisabled_RestAreEnabled()
+        {
+            var contactId = Guid.NewGuid();
+            var contact = new DataRecord("contact", contactId);
+            contact.Attributes["wit_rut"] = "12345678";
+            contact.Attributes["modifiedon"] = DateTime.UtcNow;
+
+            var service = new FakeSourceRecordService(new Dictionary<string, List<DataRecord>>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["contact"] = new List<DataRecord> { contact }
+            });
+
+            var result = await SubjectProfileBuilder.BuildAsync(service, "12.345.678-9", null, CancellationToken.None);
+
+            var nonWritable = new[] { "activitypointer", "activityparty" };
+            foreach (var logicalName in nonWritable)
+            {
+                var entity = result.Profile.Entities.Single(e => e.LogicalName == logicalName);
+                Assert.False(entity.Enabled);
+            }
+
+            var writable = result.Profile.Entities.Where(e => !nonWritable.Contains(e.LogicalName, StringComparer.OrdinalIgnoreCase));
+            Assert.All(writable, e => Assert.True(e.Enabled));
+        }
+
+        /// <summary>
+        /// Regresión de un crash en cascada real: un lookup externo al perfil (fuera de las 28
+        /// tablas del mapa) sin ese GUID en Target tumbaba la escritura de "contact" entero, y
+        /// como contact nunca se creaba, TODO lo que depende de él fallaba también — 336 de 337
+        /// registros en una corrida real. La política por defecto de este perfil debe ser
+        /// SkipSilently (Required Y Optional), a diferencia del migrador genérico.
+        /// </summary>
+        [Fact]
+        public async Task BuildAsync_Profile_DefaultsToSkipSilentlyForBothLookupPolicies()
+        {
+            var contactId = Guid.NewGuid();
+            var contact = new DataRecord("contact", contactId);
+            contact.Attributes["wit_rut"] = "12345678";
+            contact.Attributes["modifiedon"] = DateTime.UtcNow;
+
+            var service = new FakeSourceRecordService(new Dictionary<string, List<DataRecord>>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["contact"] = new List<DataRecord> { contact }
+            });
+
+            var result = await SubjectProfileBuilder.BuildAsync(service, "12.345.678-9", null, CancellationToken.None);
+
+            Assert.Equal(LookupPolicy.SkipSilently, result.Profile.Options.RequiredLookupPolicy);
+            Assert.Equal(LookupPolicy.SkipSilently, result.Profile.Options.OptionalLookupPolicy);
         }
 
         /// <summary>

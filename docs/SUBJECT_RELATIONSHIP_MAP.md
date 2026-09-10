@@ -103,6 +103,35 @@ Activity-type — su propia primary key es `activitypartyid`, la convención est
 sin problema (distinto del atributo `activityparty.activityid`, que es un LOOKUP, no su propia
 primary key — ver fila 26 más arriba).
 
+## `activitypointer` y `activityparty` nunca se escriben
+
+Bug real de una corrida en vivo: "The 'Create' method does not support entities of type
+'activitypointer'" / "...'activityparty'" (86 y 112 fallos respectivamente). Dataverse no
+permite crear directamente ninguna de las dos:
+- `activitypointer` es la vista base polimórfica de CUALQUIER actividad concreta — el dato real
+  vive en la entidad concreta (`email`, `phonecall`, `wit_actividadchat`, ...), que este mismo
+  mapa ya migra por separado. Escribir `activitypointer` sería, en el mejor de los casos,
+  redundante.
+- `activityparty` se crea implícitamente al setear los campos to/from/requiredattendees de una
+  actividad — nunca vía `Create` genérico contra la propia entidad.
+
+`SubjectProfileBuilder` las deja en el perfil con `Enabled = false` — no se escriben, no
+aparecen en Preview Data ni cuentan registros — pero `SubjectRelationshipMap` las sigue
+consultando directo contra `IDataverseRecordService` para resolver IDs de otras filas (filas 17,
+18, 26), porque eso no depende de si la `ProfileEntity` está habilitada.
+
+## Política de lookups: SkipSilently por defecto (Required Y Optional)
+
+Bug real en cascada: un lookup externo al perfil (fuera de las 28 tablas del mapa — p. ej.
+`contact.wit_resultadoultimocorreoelectronico_detalle` apuntando a `wit_detalledeactividad`) sin
+ese GUID en Target tumbaba la creación de `contact` completo, y como `contact` nunca se creaba,
+TODO lo que depende de él fallaba también (336 de 337 registros de una corrida real). A
+diferencia del migrador genérico (donde saltear silenciosamente un lookup **obligatorio** se
+dejó deliberadamente fuera de alcance, por ser una decisión delicada), acá la alternativa a
+`SkipSilently` es "el sujeto completo no se migra" — mucho peor para el propósito real de esta
+herramienta. `SubjectProfileBuilder` fija `RequiredLookupPolicy = OptionalLookupPolicy =
+SkipSilently` siempre, sin exponer ninguna opción en la UI para cambiarlo.
+
 ## Regla de fidelidad
 
 Este mapa debe seguir siendo un superconjunto o igual al SQL de referencia — nunca un

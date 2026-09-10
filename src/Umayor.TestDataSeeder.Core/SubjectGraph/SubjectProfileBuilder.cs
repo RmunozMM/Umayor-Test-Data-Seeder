@@ -36,7 +36,22 @@ namespace Umayor.TestDataSeeder.Core.SubjectGraph
             {
                 Name = $"Sujeto {rut ?? pasaporte}",
                 Description = "Perfil generado en memoria por SubjectProfileBuilder — no persistido como JSON de perfil normal.",
-                Options = new ProfileOptions()
+                Options = new ProfileOptions
+                {
+                    // Bug real encontrado migrando contra el tenant real: un lookup externo al
+                    // perfil (p. ej. contact.wit_resultadoultimocorreoelectronico_detalle ->
+                    // wit_detalledeactividad, una tabla fuera de las 28 del mapa) con un GUID que
+                    // no existe en Target tumbaba la escritura de "contact" entero — y como
+                    // "contact" nunca se creaba, TODO lo que depende de él fallaba en cascada
+                    // (336 de 337 registros de una corrida real). A diferencia del migrador
+                    // genérico (donde saltear un lookup obligatorio es una decisión delicada que
+                    // se dejó fuera de alcance a propósito), acá la alternativa a SkipSilently es
+                    // "el sujeto completo no se migra" — mucho peor para el propósito real de
+                    // esta herramienta (tener datos de prueba anonimizados, no una réplica 100%
+                    // fiel). Sin UI para elegir esto — es la política por defecto y única.
+                    RequiredLookupPolicy = LookupPolicy.SkipSilently,
+                    OptionalLookupPolicy = LookupPolicy.SkipSilently
+                }
             };
 
             int order = 0;
@@ -64,7 +79,18 @@ namespace Umayor.TestDataSeeder.Core.SubjectGraph
                 {
                     LogicalName = rule.LogicalName,
                     DisplayName = rule.LogicalName,
-                    Enabled = true,
+                    // Bug real: "The 'Create' method does not support entities of type
+                    // 'activitypointer'" / "...'activityparty'" — ninguna de las dos se puede
+                    // crear directamente en Dataverse. activitypointer es la vista base
+                    // polimórfica de CUALQUIER actividad (el dato real vive en la entidad
+                    // concreta — email, phonecall, etc. — que este mismo mapa ya migra por
+                    // separado); activityparty se crea implícitamente al setear los campos
+                    // to/from/requiredattendees de una actividad, nunca vía Create genérico.
+                    // Ambas quedan en el mapa SOLO como paso de resolución de IDs (ver
+                    // SubjectRelationshipMap — sus queries van directo contra
+                    // IDataverseRecordService, no dependen de este Enabled), nunca como datos a
+                    // escribir.
+                    Enabled = !NonWritableResolutionOnlyTables.Contains(rule.LogicalName),
                     PreferredOrder = order++,
                     Filter = filter
                 });
@@ -72,6 +98,16 @@ namespace Umayor.TestDataSeeder.Core.SubjectGraph
 
             return new SubjectProfileResult { Context = context, Profile = profile };
         }
+
+        /// <summary>Tablas de docs/SUBJECT_RELATIONSHIP_MAP.md que Dataverse no deja crear
+        /// directamente — quedan en el perfil con <c>Enabled = false</c> (nunca se escriben ni
+        /// se cuentan en Preview), pero <see cref="SubjectRelationshipMap"/> sigue pudiendo
+        /// usarlas para resolver IDs de otras filas.</summary>
+        private static readonly HashSet<string> NonWritableResolutionOnlyTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "activitypointer",
+            "activityparty",
+        };
 
         private static bool IsEmpty(RecordFilter filter)
             => filter == null || ((filter.Conditions?.Count ?? 0) == 0 && (filter.SubFilters?.Count ?? 0) == 0);
