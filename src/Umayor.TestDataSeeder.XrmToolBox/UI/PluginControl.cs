@@ -448,15 +448,28 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
 
                     IReadOnlyList<DataRecord> records;
                     try { records = _sourceRecords.RetrieveByIdsAsync(table.LogicalName, new[] { failure.RecordId }, columns, token).GetAwaiter().GetResult(); }
-                    catch { continue; }
+                    catch (Exception ex)
+                    {
+                        AppendLog($"    ↳ diagnóstico: no se pudo releer '{table.LogicalName}' (registro {failure.RecordId:D}) para identificar el campo — {ex.Message}");
+                        continue;
+                    }
 
                     var record = records.FirstOrDefault();
-                    if (record == null) continue;
+                    if (record == null)
+                    {
+                        AppendLog($"    ↳ diagnóstico: '{table.LogicalName}' (registro {failure.RecordId:D}) ya no está en Source, no se pudo releer para identificar el campo.");
+                        continue;
+                    }
 
                     var matchingAttrs = record.Attributes
                         .Where(kvp => kvp.Value is DataReference dr && dr.Id == targetGuid)
                         .Select(kvp => kvp.Key)
                         .ToList();
+
+                    if (matchingAttrs.Count == 0)
+                    {
+                        AppendLog($"    ↳ diagnóstico: en '{table.LogicalName}' (registro {failure.RecordId:D}), ningún atributo LEÍDO apunta a {targetGuid:D} — puede ser un campo excluido de antemano (p. ej. un lookup de tipo Owner) que igual viaja en el payload real, u otra causa. Atributos con valor DataReference en el registro: {string.Join(", ", record.Attributes.Where(kvp => kvp.Value is DataReference).Select(kvp => kvp.Key))}.");
+                    }
 
                     if (matchingAttrs.Count > 0)
                     {
