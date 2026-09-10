@@ -394,6 +394,10 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
                     var totalCreated = manifest.Tables.Sum(t => t.Created);
                     var totalUpdated = manifest.Tables.Sum(t => t.Updated);
                     var totalFailed = manifest.Tables.Sum(t => t.Failed);
+
+                    foreach (var t in manifest.Tables)
+                        LogFailureDetails(t);
+
                     var fakeRutLine = !string.IsNullOrWhiteSpace(_lastResolved.Context.Rut)
                         ? $" RUT anonimizado en Target: {RutGenerator.Generate(_lastResolved.Context.Rut).Formatted}."
                         : string.Empty;
@@ -427,6 +431,26 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
                 _logBox.Invoke(new Action(() => _logBox.AppendText(line + Environment.NewLine)));
             else
                 _logBox.AppendText(line + Environment.NewLine);
+        }
+
+        /// <summary>
+        /// Surfaces WHY records failed, not solo cuántos — gap real: el log de Migrar solo
+        /// mostraba "[Pass 1] X: done — 0 created, N failed", sin ningún indicio de la causa,
+        /// para 337 fallos reales de una corrida en vivo. Mismo patrón ya probado en
+        /// DataverseMasterDataMigrator.XrmToolBox\UI\PluginControl.cs — agrupa por mensaje de
+        /// error distinto, ya que un fallo masivo suele compartir una única causa raíz.
+        /// </summary>
+        private void LogFailureDetails(TableExecutionResult t)
+        {
+            if (t.Failed == 0) return;
+
+            var grouped = t.Errors
+                .Where(e => e.Outcome == RecordOutcome.Failed)
+                .GroupBy(e => e.ErrorMessage ?? "(sin mensaje de error)")
+                .OrderByDescending(g => g.Count());
+
+            foreach (var g in grouped)
+                AppendLog($"    {g.Count()}x: {g.Key}  (p.ej. registro {g.First().RecordId:D}, pass {g.First().Pass})");
         }
 
         /// <summary>Resultado de <see cref="OnPreview"/> pasado vía <c>WorkAsyncInfo.Args.Result</c>
