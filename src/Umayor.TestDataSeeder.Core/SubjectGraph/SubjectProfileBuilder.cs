@@ -92,7 +92,8 @@ namespace Umayor.TestDataSeeder.Core.SubjectGraph
                     // escribir.
                     Enabled = !NonWritableResolutionOnlyTables.Contains(rule.LogicalName),
                     PreferredOrder = order++,
-                    Filter = filter
+                    Filter = filter,
+                    ExcludedAttributes = BuildExcludedAttributes(rule.LogicalName)
                 });
             }
 
@@ -108,6 +109,20 @@ namespace Umayor.TestDataSeeder.Core.SubjectGraph
             "activitypointer",
             "activityparty",
         };
+
+        /// <summary>Bug real encontrado en vivo: <c>activitymimeattachment</c> falla al crear con
+        /// "The attachment cannot be saved. Either specify activityId or ObjectTypeCode &amp;
+        /// ObjectId." — Dataverse exige EXACTAMENTE una de las dos vías para identificar a qué
+        /// actividad pertenece el adjunto, nunca ambas. El diagnóstico en vivo (ver
+        /// PluginControl.DiagnoseEntityNotFoundFailures) confirmó que el registro real trae tanto
+        /// <c>objectid</c> como <c>activityid</c> apuntando al mismo email — la metadata genérica
+        /// no distingue esto, así que <c>AttributeWritabilityRules.GetWritableAttributes</c>
+        /// escribe ambos. Se excluye <c>objectid</c> (dejando solo <c>activityid</c>, la vía
+        /// correcta para adjuntos de actividades como email) SOLO para esta tabla.</summary>
+        private static List<string> BuildExcludedAttributes(string logicalName)
+            => string.Equals(logicalName, "activitymimeattachment", StringComparison.OrdinalIgnoreCase)
+                ? new List<string> { "objectid" }
+                : new List<string>();
 
         private static bool IsEmpty(RecordFilter filter)
             => filter == null || ((filter.Conditions?.Count ?? 0) == 0 && (filter.SubFilters?.Count ?? 0) == 0);

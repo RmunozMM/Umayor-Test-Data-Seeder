@@ -116,6 +116,38 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
         }
 
         /// <summary>
+        /// Regresión de un error real al migrar: "The attachment cannot be saved. Either specify
+        /// activityId or ObjectTypeCode &amp; ObjectId." — Dataverse exige exactamente una de las
+        /// dos vías para vincular el adjunto a su actividad, nunca ambas. El diagnóstico en vivo
+        /// confirmó que el registro real trae tanto "objectid" como "activityid" apuntando al
+        /// mismo email, y la metadata genérica no distingue esto — así que
+        /// AttributeWritabilityRules.GetWritableAttributes escribía ambos. "objectid" debe quedar
+        /// excluido para esta tabla (dejando solo "activityid"); ninguna otra tabla del mapa debe
+        /// tener exclusiones.
+        /// </summary>
+        [Fact]
+        public async Task BuildAsync_ActivityMimeAttachment_ExcludesObjectId_OtherTablesUnaffected()
+        {
+            var contactId = Guid.NewGuid();
+            var contact = new DataRecord("contact", contactId);
+            contact.Attributes["wit_rut"] = "12345678";
+            contact.Attributes["modifiedon"] = DateTime.UtcNow;
+
+            var service = new FakeSourceRecordService(new Dictionary<string, List<DataRecord>>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["contact"] = new List<DataRecord> { contact }
+            });
+
+            var result = await SubjectProfileBuilder.BuildAsync(service, "12.345.678-9", null, CancellationToken.None);
+
+            var attachment = result.Profile.Entities.Single(e => e.LogicalName == "activitymimeattachment");
+            Assert.Equal(new[] { "objectid" }, attachment.ExcludedAttributes);
+
+            var others = result.Profile.Entities.Where(e => e.LogicalName != "activitymimeattachment");
+            Assert.All(others, e => Assert.Empty(e.ExcludedAttributes));
+        }
+
+        /// <summary>
         /// Regresión del bug real encontrado en revisión: cuando una regla no logra resolver
         /// ninguna condición (acá, "wit_ingresofamiliarbruto" — el contacto no tiene
         /// wit_tramo ni wit_ingresobrutofamiliar, caso común), <see cref="RecordFilter"/> vacío
