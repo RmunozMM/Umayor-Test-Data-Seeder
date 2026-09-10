@@ -211,43 +211,29 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
 
         private Control BuildSubjectRow()
         {
-            var outer = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 1, RowCount = 2, AutoSize = true, Padding = new Padding(0, 4, 0, 14) };
+            var row = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 6, RowCount = 1, AutoSize = true, Padding = new Padding(0, 8, 0, 14) };
 
-            var inputRow = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 6, RowCount = 1, AutoSize = true, Padding = new Padding(0, 8, 0, 4) };
-
-            inputRow.Controls.Add(new System.Windows.Forms.Label { Text = "RUT:", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 8, 6, 0) });
+            row.Controls.Add(new System.Windows.Forms.Label { Text = "RUT:", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 8, 6, 0) });
             _rutBox = new TextBox { Width = 130, Margin = new Padding(0, 5, 20, 0) };
-            inputRow.Controls.Add(_rutBox);
+            row.Controls.Add(_rutBox);
 
-            inputRow.Controls.Add(new System.Windows.Forms.Label { Text = "Pasaporte:", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 8, 6, 0) });
+            row.Controls.Add(new System.Windows.Forms.Label { Text = "Pasaporte:", AutoSize = true, TextAlign = ContentAlignment.MiddleLeft, Margin = new Padding(0, 8, 6, 0) });
             _pasaporteBox = new TextBox { Width = 130, Margin = new Padding(0, 5, 20, 0) };
-            inputRow.Controls.Add(_pasaporteBox);
+            row.Controls.Add(_pasaporteBox);
 
             _btnPreview = MakeButton("Resolver y Previsualizar", OnPreview);
             _btnPreview.Enabled = false;
-            inputRow.Controls.Add(_btnPreview);
+            row.Controls.Add(_btnPreview);
 
             _btnMigrate = MakeButton("Migrar (anonimizado)", OnMigrate);
             _btnMigrate.Enabled = false;
-            inputRow.Controls.Add(_btnMigrate);
+            row.Controls.Add(_btnMigrate);
 
             _btnCancel = MakeButton("Cancel", OnCancel);
             _btnCancel.Enabled = false;
-            inputRow.Controls.Add(_btnCancel);
+            row.Controls.Add(_btnCancel);
 
-            var hint = new System.Windows.Forms.Label
-            {
-                Text = "RUT: se busca solo por el cuerpo (sin dígito verificador). Podés tipear \"17175272\" o \"17175272-8\" (el DV se ignora).",
-                AutoSize = true,
-                Dock = DockStyle.Top,
-                ForeColor = Color.DimGray,
-                Font = new Font(FontFamily.GenericSansSerif, 8, FontStyle.Italic),
-                Margin = new Padding(0, 0, 0, 0)
-            };
-
-            outer.Controls.Add(inputRow, 0, 0);
-            outer.Controls.Add(hint, 0, 1);
-            return outer;
+            return row;
         }
 
         private static Button MakeButton(string text, EventHandler onClick)
