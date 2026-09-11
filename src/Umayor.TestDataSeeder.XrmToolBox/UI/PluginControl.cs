@@ -397,6 +397,10 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
                     SetWorkingMessage("Cargando metadata de las tablas del mapa de relaciones...");
                     var sourceTables = LoadTableMetadata(profile, _sourceMetadata, token);
                     var targetTables = LoadTableMetadata(profile, _targetMetadata, token);
+
+                    SetWorkingMessage("Provisionando SystemUser referenciados que falten en Target...");
+                    ProvisionMissingSystemUsers(profile, sourceTables, token);
+
                     var plan = MigrationPlanner.CreatePlan(profile, sourceTables);
 
                     var request = new MigrationExecutionRequest
@@ -702,6 +706,111 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
                 case 5: return "Modern Flow (Power Automate)";
                 default: return category?.ToString() ?? "?";
             }
+        }
+
+        /// <summary>
+        /// Último recurso real tras tres intentos fallidos (forzar ownerid, bypass vía Upsert,
+        /// bypass vía Create/Update explícito — ninguno cambió un solo registro): el diagnóstico
+        /// ampliado mostró que el GUID de SystemUser que falla aparece en campos como
+        /// ownerid/owninguser/createdby/modifiedby (ya sabemos que no son la causa real — createdby/
+        /// modifiedby los pone Dataverse automáticamente al llamante, nunca los que mandamos, y
+        /// ownerid ya viene forzado) y también en al menos un campo custom real
+        /// ("wit_propietariofasepp"). En vez de seguir tratando de adivinar exactamente qué
+        /// mecanismo de Target dispara el error, esto ataca la causa de raíz de otra forma: si el
+        /// SystemUser referenciado directamente EXISTE en Target, cualquiera sea el mecanismo que
+        /// lo busque (plugin, workflow, o nuestro propio payload) deja de fallar. Escanea todas las
+        /// tablas habilitadas del perfil en Source buscando cualquier lookup que apunte a
+        /// "systemuser", y por cada GUID distinto que no exista ya en Target, copia un SystemUser
+        /// mínimo (mismo id, nombre/correo) desde Source. Best-effort: si Dataverse rechaza crear
+        /// systemuser directamente (requiere privilegio alto, ya confirmado que este usuario lo
+        /// tiene vía Administrador del sistema), cada fallo se loguea individualmente sin abortar
+        /// el resto.
+        /// </summary>
+        private void ProvisionMissingSystemUsers(MigrationProfile profile, Dictionary<string, TableSummary> sourceTables, CancellationToken token)
+        {
+            var systemUserIds = new HashSet<Guid>();
+
+            foreach (var entityConfig in profile.Entities.Where(e => e.Enabled))
+            {
+                token.ThrowIfCancellationRequested();
+                if (!sourceTables.TryGetValue(entityConfig.LogicalName, out var table)) continue;
+
+                var lookupColumns = table.Attributes
+                    .Where(a => a.Kind == AttributeKind.Lookup && a.IsValidForRead)
+                    .Select(a => a.LogicalName)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (lookupColumns.Count == 0) continue;
+
+                List<DataRecord> records;
+                try
+                {
+                    var page = _sourceRecords.RetrieveFilteredPageAsync(
+                        entityConfig.LogicalName, lookupColumns, entityConfig.Filter, null, 500, token)
+                        .GetAwaiter().GetResult();
+                    records = page.Records.ToList();
+                }
+                catch
+                {
+                    continue; // best-effort: una tabla que no se puede releer acá no debe abortar el resto del escaneo.
+                }
+
+                foreach (var record in records)
+                foreach (var value in record.Attributes.Values)
+                {
+                    if (value is DataReference dr && string.Equals(dr.LogicalName, "systemuser", StringComparison.OrdinalIgnoreCase))
+                        systemUserIds.Add(dr.Id);
+                }
+            }
+
+            if (systemUserIds.Count == 0) return;
+
+            AppendLog($"Verificando {systemUserIds.Count} SystemUser(s) referenciados desde Source...");
+            int provisioned = 0, alreadyExisted = 0, failed = 0;
+
+            foreach (var userId in systemUserIds)
+            {
+                token.ThrowIfCancellationRequested();
+
+                bool exists;
+                try { exists = _targetRecords.ExistsAsync(new DataReference("systemuser", userId), token).GetAwaiter().GetResult(); }
+                catch { exists = false; }
+
+                if (exists) { alreadyExisted++; continue; }
+
+                try
+                {
+                    var sourceUsers = _sourceRecords.RetrieveByIdsAsync(
+                        "systemuser", new[] { userId }, new List<string> { "fullname", "domainname", "internalemailaddress" }, token)
+                        .GetAwaiter().GetResult();
+                    var sourceUser = sourceUsers.FirstOrDefault();
+                    if (sourceUser == null)
+                    {
+                        AppendLog($"    ↳ SystemUser {userId:D}: ya no existe en Source, no se pudo provisionar.");
+                        failed++;
+                        continue;
+                    }
+
+                    var copy = new Entity("systemuser", userId);
+                    foreach (var kvp in sourceUser.Attributes)
+                    {
+                        if (kvp.Value is DataReference) continue;
+                        copy[kvp.Key] = kvp.Value;
+                    }
+
+                    _targetService.Create(copy);
+                    provisioned++;
+                    var label = sourceUser.Attributes.TryGetValue("fullname", out var fullName) ? fullName : userId.ToString("D");
+                    AppendLog($"    ↳ SystemUser {userId:D} ({label}) provisionado en Target.");
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    AppendLog($"    ↳ SystemUser {userId:D}: no se pudo provisionar en Target — {ex.Message}");
+                }
+            }
+
+            AppendLog($"SystemUsers referenciados: {provisioned} provisionado(s), {alreadyExisted} ya existían, {failed} fallido(s).");
         }
 
         /// <summary>
