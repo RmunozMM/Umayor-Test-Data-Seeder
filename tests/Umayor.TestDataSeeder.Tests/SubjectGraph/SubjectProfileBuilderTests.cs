@@ -61,7 +61,9 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
         /// ninguna de las dos (activitypointer es la vista base polimórfica de cualquier
         /// actividad concreta ya migrada por separado; activityparty se crea implícitamente al
         /// setear los campos to/from de una actividad). Deben quedar en el perfil pero
-        /// deshabilitadas — el resto de las 26 tablas sigue habilitado.
+        /// deshabilitadas. Además, "activitymimeattachment" queda deshabilitada por decisión
+        /// explícita del usuario (espacio en el entorno de prueba, no una limitación de
+        /// Dataverse) — el resto de las 25 tablas sigue habilitado.
         /// </summary>
         [Fact]
         public async Task BuildAsync_ActivityPointerAndActivityParty_AreDisabled_RestAreEnabled()
@@ -78,14 +80,14 @@ namespace Umayor.TestDataSeeder.Tests.SubjectGraph
 
             var result = await SubjectProfileBuilder.BuildAsync(service, "12.345.678-9", null, CancellationToken.None);
 
-            var nonWritable = new[] { "activitypointer", "activityparty" };
-            foreach (var logicalName in nonWritable)
+            var disabled = new[] { "activitypointer", "activityparty", "activitymimeattachment" };
+            foreach (var logicalName in disabled)
             {
                 var entity = result.Profile.Entities.Single(e => e.LogicalName == logicalName);
                 Assert.False(entity.Enabled);
             }
 
-            var writable = result.Profile.Entities.Where(e => !nonWritable.Contains(e.LogicalName, StringComparer.OrdinalIgnoreCase));
+            var writable = result.Profile.Entities.Where(e => !disabled.Contains(e.LogicalName, StringComparer.OrdinalIgnoreCase));
             Assert.All(writable, e => Assert.True(e.Enabled));
         }
 

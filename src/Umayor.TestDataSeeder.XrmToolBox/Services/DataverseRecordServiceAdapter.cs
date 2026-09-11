@@ -275,11 +275,12 @@ namespace Umayor.TestDataSeeder.XrmToolBox.Services
 
             try
             {
-                _service.Associate(
-                    from.LogicalName,
-                    from.Id,
-                    new Relationship(relationshipSchemaName),
-                    related);
+                _service.Execute(WithBypassCustomPluginExecution(new AssociateRequest
+                {
+                    Target = new EntityReference(from.LogicalName, from.Id),
+                    Relationship = new Relationship(relationshipSchemaName),
+                    RelatedEntities = related
+                }));
             }
             catch (System.ServiceModel.FaultException<Microsoft.Xrm.Sdk.OrganizationServiceFault> ex)
                 when (IsDuplicateAssociationFault(ex))
@@ -305,7 +306,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.Services
             var requestCollection = new OrganizationRequestCollection();
             foreach (var id in ids)
             {
-                requestCollection.Add(new DeleteRequest { Target = new EntityReference(logicalName, id) });
+                requestCollection.Add(WithBypassCustomPluginExecution(new DeleteRequest { Target = new EntityReference(logicalName, id) }));
             }
 
             var executeMultiple = new ExecuteMultipleRequest
@@ -395,13 +396,15 @@ namespace Umayor.TestDataSeeder.XrmToolBox.Services
             if (toCreate.Count > 0)
             {
                 results.AddRange(ExecuteBulk(logicalName, toCreate, RecordOperation.Create, pass,
-                    entities => new CreateMultipleRequest { Targets = new EntityCollection(entities) { EntityName = logicalName } }));
+                    entities => WithBypassCustomPluginExecution(
+                        new CreateMultipleRequest { Targets = new EntityCollection(entities) { EntityName = logicalName } })));
             }
 
             if (toUpdate.Count > 0)
             {
                 results.AddRange(ExecuteBulk(logicalName, toUpdate, RecordOperation.Update, pass,
-                    entities => new UpdateMultipleRequest { Targets = new EntityCollection(entities) { EntityName = logicalName } }));
+                    entities => WithBypassCustomPluginExecution(
+                        new UpdateMultipleRequest { Targets = new EntityCollection(entities) { EntityName = logicalName } })));
             }
 
             return results;
@@ -454,7 +457,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.Services
             var requestCollection = new OrganizationRequestCollection();
             foreach (var record in batch)
             {
-                requestCollection.Add(new UpsertRequest { Target = ToSdkEntity(record) });
+                requestCollection.Add(WithBypassCustomPluginExecution(new UpsertRequest { Target = ToSdkEntity(record) }));
             }
 
             var executeMultiple = new ExecuteMultipleRequest
@@ -509,7 +512,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.Services
             {
                 try
                 {
-                    _service.Execute(new UpsertRequest { Target = ToSdkEntity(record) });
+                    _service.Execute(WithBypassCustomPluginExecution(new UpsertRequest { Target = ToSdkEntity(record) }));
                     results.Add(new RecordOperationResult
                     {
                         RecordId = record.Id,
@@ -536,6 +539,26 @@ namespace Umayor.TestDataSeeder.XrmToolBox.Services
                 }
             }
             return results;
+        }
+
+        /// <summary>
+        /// Umayor existe para poblar un entorno de PRUEBA con datos anonimizados — nunca para
+        /// migraciones donde la lógica de negocio de Target deba ejecutarse. Real: un plugin
+        /// síncrono registrado en Target (ContadorActividades, sobre Create de phonecall/email/
+        /// wit_visitaweb) referencia un SystemUser que solo existe en Producción y hace fallar el
+        /// Create completo — forzar el owner del registro (ver OnMigrate) no lo evitó, porque el
+        /// plugin no depende de ownerid. La plataforma expone justo para este escenario el
+        /// parámetro opcional "BypassCustomPluginExecution" (requiere que el usuario conectado a
+        /// Target tenga el privilegio "Bypass custom business logic" en su rol de seguridad — si
+        /// no lo tiene, la plataforma simplemente lo ignora, no rompe nada). Se aplica a TODA
+        /// escritura de este plugin (Create/Update/Upsert/Delete), no solo a esas 3 tablas: es la
+        /// política correcta para una herramienta de siembra de datos de prueba en general, no un
+        /// parche puntual.
+        /// </summary>
+        private static TRequest WithBypassCustomPluginExecution<TRequest>(TRequest request) where TRequest : OrganizationRequest
+        {
+            request.Parameters["BypassCustomPluginExecution"] = true;
+            return request;
         }
 
         private static Entity ToSdkEntity(DataRecord record)

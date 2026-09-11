@@ -90,7 +90,7 @@ namespace Umayor.TestDataSeeder.Core.SubjectGraph
                     // SubjectRelationshipMap — sus queries van directo contra
                     // IDataverseRecordService, no dependen de este Enabled), nunca como datos a
                     // escribir.
-                    Enabled = !NonWritableResolutionOnlyTables.Contains(rule.LogicalName),
+                    Enabled = !NonWritableResolutionOnlyTables.Contains(rule.LogicalName) && !SkippedByPolicyTables.Contains(rule.LogicalName),
                     PreferredOrder = order++,
                     Filter = filter,
                     ExcludedAttributes = BuildExcludedAttributes(rule.LogicalName)
@@ -108,6 +108,16 @@ namespace Umayor.TestDataSeeder.Core.SubjectGraph
         {
             "activitypointer",
             "activityparty",
+        };
+
+        /// <summary>Decisión explícita del usuario (no una limitación de Dataverse, a diferencia
+        /// de <see cref="NonWritableResolutionOnlyTables"/>): los adjuntos de actividades ocupan
+        /// espacio real en el entorno de prueba y no aportan valor para testear — nunca se migran.
+        /// Queda deshabilitada en el perfil igual que las tablas de solo-resolución; nada más
+        /// depende de sus ids, así que es seguro.</summary>
+        private static readonly HashSet<string> SkippedByPolicyTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "activitymimeattachment",
         };
 
         /// <summary>Bug real encontrado en vivo: <c>activitymimeattachment</c> falla al crear con

@@ -417,6 +417,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
 
                     var manifest = new MigrationExecutor().ExecuteAsync(request, token).GetAwaiter().GetResult();
                     DiagnoseEntityNotFoundFailures(manifest, sourceTables, profile, token);
+                    CloseOrCancelIncidents(profile, sourceTables, token);
                     args.Result = manifest;
                 },
                 PostWorkCallBack = args =>
@@ -701,6 +702,88 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
                 case 5: return "Modern Flow (Power Automate)";
                 default: return category?.ToString() ?? "?";
             }
+        }
+
+        /// <summary>
+        /// Dataverse no permite dejar un "incident" en Resuelto o Cancelado con un Update genérico
+        /// de statecode/statuscode ("This message can not be used to set the state of incident to
+        /// Resolved. In order to set state of incident to Resolved, use the CloseIncidentRequest
+        /// message instead.") — exige <c>CloseIncidentRequest</c> (con una entidad
+        /// "incidentresolution" real) o <c>CancelCaseRequest</c> respectivamente. El Core
+        /// compartido deliberadamente no especializa esto (es un mensaje propio de "incident", no
+        /// un Update genérico) — acá sí importa porque el usuario quiere que los casos de prueba
+        /// terminen con su estado real, no solo creados en Activo. Vuelve a leer de SOURCE el
+        /// statecode real de cada incident del sujeto (0=Activo/1=Resuelto/2=Cancelado, valores
+        /// fijos de la plataforma para esta tabla, no personalizables) y aplica el mensaje
+        /// correcto contra TARGET usando el mismo id (PreserveSourceGuid ya garantiza que
+        /// coincide). Se saltea si "incident" no está habilitado en el perfil.
+        /// </summary>
+        private void CloseOrCancelIncidents(MigrationProfile profile, Dictionary<string, TableSummary> sourceTables, CancellationToken token)
+        {
+            var entityConfig = profile.Entities.FirstOrDefault(e =>
+                string.Equals(e.LogicalName, "incident", StringComparison.OrdinalIgnoreCase) && e.Enabled);
+            if (entityConfig == null || !sourceTables.ContainsKey("incident")) return;
+
+            List<DataRecord> incidents;
+            try
+            {
+                var page = _sourceRecords.RetrieveFilteredPageAsync(
+                    "incident", new List<string> { "statecode", "statuscode" }, entityConfig.Filter, null, 500, token)
+                    .GetAwaiter().GetResult();
+                incidents = page.Records.ToList();
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"No se pudo releer el estado real de 'incident' en Source para cerrarlos/cancelarlos en Target — quedan como estén. ({ex.Message})");
+                return;
+            }
+
+            int closed = 0, cancelled = 0, failed = 0;
+            foreach (var incident in incidents)
+            {
+                token.ThrowIfCancellationRequested();
+
+                if (!(incident.Attributes.TryGetValue("statecode", out var stateVal) && stateVal is OptionSetValue state)) continue;
+                if (!(incident.Attributes.TryGetValue("statuscode", out var statusVal) && statusVal is OptionSetValue status)) continue;
+                if (state.Value != 1 && state.Value != 2) continue; // 0 = Activo, no necesita mensaje especial.
+
+                try
+                {
+                    if (state.Value == 1) // Resuelto
+                    {
+                        var resolution = new Entity("incidentresolution");
+                        resolution["subject"] = "Resolución migrada (Umayor Test Data Seeder)";
+                        resolution["incidentid"] = new EntityReference("incident", incident.Id);
+                        resolution["timespent"] = 0;
+
+                        var closeRequest = new CloseIncidentRequest { IncidentResolution = resolution, Status = new OptionSetValue(status.Value) };
+                        closeRequest.Parameters["BypassCustomPluginExecution"] = true;
+                        _targetService.Execute(closeRequest);
+                        closed++;
+                    }
+                    else // Cancelado
+                    {
+                        // CancelCaseRequest no existe en la versión de Microsoft.Crm.Sdk.Proxy.dll
+                        // referenciada por este proyecto (confirmado decompilando el DLL real) —
+                        // se arma el mensaje "CancelCase" de forma tardía (late-bound), que
+                        // funciona igual sin depender de esa clase fuertemente tipada.
+                        var cancelRequest = new OrganizationRequest("CancelCase");
+                        cancelRequest.Parameters["IncidentId"] = incident.Id;
+                        cancelRequest.Parameters["Status"] = new OptionSetValue(status.Value);
+                        cancelRequest.Parameters["BypassCustomPluginExecution"] = true;
+                        _targetService.Execute(cancelRequest);
+                        cancelled++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    AppendLog($"    ↳ 'incident' (registro {incident.Id:D}): no se pudo dejar en su estado real de Origen — {ex.Message}");
+                }
+            }
+
+            if (closed > 0 || cancelled > 0 || failed > 0)
+                AppendLog($"Estado real de 'incident' aplicado en Target: {closed} resuelto(s), {cancelled} cancelado(s), {failed} fallido(s).");
         }
 
         /// <summary>
