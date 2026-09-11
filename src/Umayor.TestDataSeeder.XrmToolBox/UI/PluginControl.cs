@@ -792,6 +792,15 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
         /// referencia — sin esto, un fallo así (p. ej. contra "SystemUser") es indiagnosticable a
         /// simple vista. Re-lee el registro real de Source (mismo id que falló) y busca cuál de
         /// sus atributos apunta exactamente a ese GUID, para nombrarlo en el log.
+        ///
+        /// Bug real encontrado en vivo: la primera versión de este diagnóstico releía Source
+        /// usando SOLO <c>writableAttrs</c> (los atributos que de verdad escribimos) — pero eso
+        /// excluye a propósito ownerid (IsOwnerLookup) y cualquier atributo en ExcludedAttributes
+        /// o con IsValidForRead=false. El GUID de SystemUser que falla en phonecall/email/
+        /// wit_visitaweb nunca apareció en tres corridas reales (ni con el override de owner
+        /// activo) precisamente porque el campo real que lo contiene está en ESA zona ciega. Acá
+        /// se relee con TODOS los lookups legibles de la tabla (todo Kind=Lookup con
+        /// IsValidForRead=true, sin filtrar por si son escribibles), para encontrarlo de verdad.
         /// </summary>
         private void DiagnoseEntityNotFoundFailures(
             ExecutionManifest manifest, Dictionary<string, TableSummary> sourceTables, MigrationProfile profile, CancellationToken token)
@@ -805,9 +814,11 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
                 var entityConfig = profile.Entities.FirstOrDefault(e => string.Equals(e.LogicalName, table.LogicalName, StringComparison.OrdinalIgnoreCase));
                 if (entityConfig == null) continue;
 
-                var restoreState = profile.Options.RestoreStateStatus && sourceTable.HasStateStatus;
-                var writableAttrs = AttributeWritabilityRules.GetWritableAttributes(sourceTable, entityConfig, restoreState);
-                var columns = writableAttrs.Select(a => a.LogicalName).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                var columns = sourceTable.Attributes
+                    .Where(a => a.Kind == AttributeKind.Lookup && a.IsValidForRead)
+                    .Select(a => a.LogicalName)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
 
                 var examplesPerMessage = table.Errors
                     .Where(e => e.Outcome == RecordOutcome.Failed)
