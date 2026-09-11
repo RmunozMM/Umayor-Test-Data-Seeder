@@ -765,6 +765,22 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
 
             if (systemUserIds.Count == 0) return;
 
+            // Bug real encontrado en vivo: Create de "systemuser" rechaza el registro si no viene
+            // "businessunitid" ("Unable to retrieve attribute=businessunitid..."), y copiar el de
+            // Source no sirve — esa unidad de negocio de Producción no existe en Target. Se usa la
+            // del usuario YA conectado a Target (que por definición existe).
+            Guid targetBusinessUnitId;
+            try
+            {
+                var who = (WhoAmIResponse)_targetService.Execute(new WhoAmIRequest());
+                targetBusinessUnitId = who.BusinessUnitId;
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"No se pudo determinar la unidad de negocio de Target para provisionar SystemUsers — se omite este paso. ({ex.Message})");
+                return;
+            }
+
             AppendLog($"Verificando {systemUserIds.Count} SystemUser(s) referenciados desde Source...");
             int provisioned = 0, alreadyExisted = 0, failed = 0;
 
@@ -797,6 +813,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
                         if (kvp.Value is DataReference) continue;
                         copy[kvp.Key] = kvp.Value;
                     }
+                    copy["businessunitid"] = new EntityReference("businessunit", targetBusinessUnitId);
 
                     _targetService.Create(copy);
                     provisioned++;
