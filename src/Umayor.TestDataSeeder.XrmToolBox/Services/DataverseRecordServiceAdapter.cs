@@ -242,6 +242,23 @@ namespace Umayor.TestDataSeeder.XrmToolBox.Services
             return Task.FromResult((int)count);
         }
 
+        /// <summary>Diagnóstico en vivo real: el usuario conectado a Target SÍ tiene el
+        /// privilegio "Bypass custom business logic" (confirmado consultando
+        /// roleprivileges_association vía Web API contra el rol Administrador del sistema), pero
+        /// el plugin síncrono de Target (ContadorActividades) seguía disparando en estas 3 tablas
+        /// pese a <see cref="WithBypassCustomPluginExecution"/>. La sospecha: el flag no viaja
+        /// igual cuando el mensaje real es Upsert — la estrategia que <c>WriteStrategySelector</c>
+        /// elige para estas tablas Activity-type porque no soportan CreateMultiple/
+        /// UpdateMultiple. Para estas 3 tablas puntuales, se ignora la estrategia que mandó el
+        /// Core y se fuerza un Create o Update EXPLÍCITO por registro (nunca Upsert), para probar
+        /// si por esa vía el bypass sí se respeta.</summary>
+        private static readonly HashSet<string> ForceExplicitCreateOrUpdateTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "phonecall",
+            "email",
+            "wit_visitaweb",
+        };
+
         public Task<IReadOnlyList<RecordOperationResult>> WriteBatchAsync(
             string logicalName,
             IReadOnlyList<DataRecord> batch,
@@ -250,6 +267,9 @@ namespace Umayor.TestDataSeeder.XrmToolBox.Services
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+
+            if (ForceExplicitCreateOrUpdateTables.Contains(logicalName))
+                return Task.FromResult<IReadOnlyList<RecordOperationResult>>(WriteExecuteMultipleCreateOrUpdate(logicalName, batch, pass));
 
             switch (strategy)
             {
@@ -496,6 +516,79 @@ namespace Umayor.TestDataSeeder.XrmToolBox.Services
                         RecordId = record.Id,
                         TableLogicalName = record.LogicalName,
                         Operation = RecordOperation.Create,
+                        Outcome = RecordOutcome.Succeeded,
+                        Pass = pass
+                    });
+                }
+            }
+
+            return results;
+        }
+
+        private List<RecordOperationResult> WriteExecuteMultipleCreateOrUpdate(string logicalName, IReadOnlyList<DataRecord> batch, int pass)
+        {
+            var requestCollection = new OrganizationRequestCollection();
+            var operations = new RecordOperation[batch.Count];
+
+            for (int i = 0; i < batch.Count; i++)
+            {
+                var record = batch[i];
+                bool exists;
+                try
+                {
+                    _service.Retrieve(logicalName, record.Id, new ColumnSet(false));
+                    exists = true;
+                }
+                catch (System.ServiceModel.FaultException<Microsoft.Xrm.Sdk.OrganizationServiceFault> ex)
+                    when (IsNotFoundFault(ex))
+                {
+                    exists = false;
+                }
+
+                operations[i] = exists ? RecordOperation.Update : RecordOperation.Create;
+                var entity = ToSdkEntity(record);
+                OrganizationRequest request = exists
+                    ? (OrganizationRequest)new UpdateRequest { Target = entity }
+                    : new CreateRequest { Target = entity };
+                requestCollection.Add(WithBypassCustomPluginExecution(request));
+            }
+
+            var executeMultiple = new ExecuteMultipleRequest
+            {
+                Settings = new ExecuteMultipleSettings { ContinueOnError = true, ReturnResponses = true },
+                Requests = requestCollection
+            };
+
+            var response = (ExecuteMultipleResponse)_service.Execute(executeMultiple);
+            var results = new List<RecordOperationResult>();
+
+            for (int i = 0; i < batch.Count; i++)
+            {
+                var record = batch[i];
+                var itemResponse = response.Responses.FirstOrDefault(r => r.RequestIndex == i);
+
+                if (itemResponse?.Fault != null)
+                {
+                    ClassifyFault(itemResponse.Fault, out var isTransient, out var retryAfter);
+                    results.Add(new RecordOperationResult
+                    {
+                        RecordId = record.Id,
+                        TableLogicalName = record.LogicalName,
+                        Operation = operations[i],
+                        Outcome = RecordOutcome.Failed,
+                        Pass = pass,
+                        ErrorMessage = itemResponse.Fault.Message,
+                        IsTransient = isTransient,
+                        RetryAfterHint = retryAfter
+                    });
+                }
+                else
+                {
+                    results.Add(new RecordOperationResult
+                    {
+                        RecordId = record.Id,
+                        TableLogicalName = record.LogicalName,
+                        Operation = operations[i],
                         Outcome = RecordOutcome.Succeeded,
                         Pass = pass
                     });
