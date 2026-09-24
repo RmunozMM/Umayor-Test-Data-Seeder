@@ -13,6 +13,19 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
     /// </summary>
     internal sealed class AboutForm : Form
     {
+        // Logo de la aplicación (escudo + "Umayor / TEST DATA SEEDER") provisto por el autor,
+        // recortado a su contenido y reducido a 64 px de alto (218x64) por tools/make_icons.py.
+        // Nombre = RootNamespace + ruta del EmbeddedResource.
+        internal const string LogoResourceName = "Umayor.TestDataSeeder.XrmToolBox.Resources.app-logo-64.png";
+
+        // Geometría del logo (ClientSize 560x500, medida con el layout real): la fila
+        // "Repositorio:" termina en y=312 (logo en y=352, 40 px), el logo termina en y=416 y el
+        // botón "Cerrar" empieza en y=455 (39 px; en horizontal además los separan 61 px) y los
+        // bordes quedan a 171 px (laterales) y 84 px (inferior).
+        private const int LogoTop = 352;
+
+        private Image _logo;
+
         public AboutForm()
         {
             Text = "About Umayor Test Data Seeder";
@@ -22,11 +35,12 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
             MinimizeBox = false;
             ShowIcon = false;
             ShowInTaskbar = false;
-            ClientSize = new Size(560, 400);
+            ClientSize = new Size(560, 500);
 
             var version = Assembly.GetExecutingAssembly().GetName().Version;
 
-            var header = new Panel { Dock = DockStyle.Top, Height = 90, BackColor = ColorTranslator.FromHtml("#152238") };
+            // Gris 2 de la paleta UMayor.
+            var header = new Panel { Dock = DockStyle.Top, Height = 90, BackColor = ColorTranslator.FromHtml("#343742") };
             header.Controls.Add(new Label
             {
                 Text = "Umayor Test Data Seeder",
@@ -127,13 +141,71 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
             closeButton.Location = new Point(ClientSize.Width - closeButton.Width - 20, ClientSize.Height - closeButton.Height - 15);
             closeButton.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
 
-            Controls.Add(header);
+            // WinForms acomoda los controles acoplados en orden Z inverso: el Fill tiene que quedar
+            // delante del Top para que ocupe solo el espacio restante. Con el orden anterior
+            // (header y luego body) el body tomaba el form completo y el header tapaba sus
+            // primeros 90 px (la descripción quedaba oculta).
             Controls.Add(body);
+            Controls.Add(header);
             Controls.Add(closeButton);
             closeButton.BringToFront();
 
+            // El logo tiene fondo blanco: va sobre el cuerpo blanco, a tamaño real
+            // (sin escalar ni deformar), centrado horizontalmente, con Location absoluta.
+            _logo = LoadLogo();
+            if (_logo != null)
+            {
+                var logoBox = new PictureBox
+                {
+                    Image = _logo,
+                    SizeMode = PictureBoxSizeMode.Normal,
+                    Size = _logo.Size,
+                    BackColor = Color.White,
+                    Location = new Point((ClientSize.Width - _logo.Width) / 2, LogoTop),
+                    Anchor = AnchorStyles.Top,
+                    TabStop = false
+                };
+                Controls.Add(logoBox);
+                logoBox.BringToFront();
+            }
+
             AcceptButton = closeButton;
             CancelButton = closeButton;
+        }
+
+        internal static Image LoadLogo()
+        {
+            try
+            {
+                using (var stream = typeof(AboutForm).Assembly.GetManifestResourceStream(LogoResourceName))
+                {
+                    if (stream == null)
+                    {
+                        return null;
+                    }
+
+                    // Copia desacoplada del stream (Image.FromStream exige mantenerlo abierto).
+                    using (var decoded = Image.FromStream(stream))
+                    {
+                        return new Bitmap(decoded);
+                    }
+                }
+            }
+            catch
+            {
+                return null; // sin logo antes que romper el About
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing); // primero los controles (el PictureBox aún referencia la imagen)
+
+            if (disposing && _logo != null)
+            {
+                _logo.Dispose();
+                _logo = null;
+            }
         }
 
         private static Control MakeLinkRow(string label, string linkText, string target)
