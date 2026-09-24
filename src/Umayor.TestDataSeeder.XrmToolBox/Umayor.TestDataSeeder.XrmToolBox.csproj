@@ -97,9 +97,10 @@
     <Compile Include="UI\PluginControl.cs" />
   </ItemGroup>
   <ItemGroup>
-    <!-- Isologo oficial UMayor para el About (generado por tools/make_icons.py). Los PNG de los
-         íconos (icon_*.png) no se embeben: van como base64 en los ExportMetadata de Plugin.cs. -->
-    <EmbeddedResource Include="Resources\um-horizontal-color-48.png" />
+    <!-- Logo de la aplicación para el About (generado por tools/make_icons.py). Los PNG de los
+         íconos (icon_*.png) no se embeben: van como base64 en los ExportMetadata de Plugin.cs, y
+         app-logo-source.png es solo la fuente para regenerarlos. -->
+    <EmbeddedResource Include="Resources\app-logo-64.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

@@ -13,17 +13,16 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
     /// </summary>
     internal sealed class AboutForm : Form
     {
-        // Isologo horizontal oficial a color de la Universidad Mayor, recortado a su contenido y
-        // reducido a 48 px de alto (altura mínima en pantalla del Manual de Marca UMayor 2024) por
-        // tools/make_icons.py. Nombre = RootNamespace + ruta del EmbeddedResource.
-        internal const string LogoResourceName = "Umayor.TestDataSeeder.XrmToolBox.Resources.um-horizontal-color-48.png";
+        // Logo de la aplicación (escudo + "Umayor / TEST DATA SEEDER") provisto por el autor,
+        // recortado a su contenido y reducido a 64 px de alto (218x64) por tools/make_icons.py.
+        // Nombre = RootNamespace + ruta del EmbeddedResource.
+        internal const string LogoResourceName = "Umayor.TestDataSeeder.XrmToolBox.Resources.app-logo-64.png";
 
-        // Geometría del logo (ClientSize 560x560, medida con el layout real). Área de resguardo del
-        // manual = 1/4 del ancho del logo (278/4 ≈ 70 px) libre alrededor: la fila "Repositorio:"
-        // termina en y=312 (logo en y=390, 78 px), el botón "Cerrar" empieza en y=515 (77 px bajo
-        // el logo, que termina en y=438; en horizontal solo lo separan 31 px, por eso la distancia
-        // vertical) y los bordes quedan a 141 px (laterales) y 122 px (inferior).
-        private const int LogoTop = 390;
+        // Geometría del logo (ClientSize 560x500, medida con el layout real): la fila
+        // "Repositorio:" termina en y=312 (logo en y=352, 40 px), el logo termina en y=416 y el
+        // botón "Cerrar" empieza en y=455 (39 px; en horizontal además los separan 61 px) y los
+        // bordes quedan a 171 px (laterales) y 84 px (inferior).
+        private const int LogoTop = 352;
 
         private Image _logo;
 
@@ -36,7 +35,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
             MinimizeBox = false;
             ShowIcon = false;
             ShowInTaskbar = false;
-            ClientSize = new Size(560, 560);
+            ClientSize = new Size(560, 500);
 
             var version = Assembly.GetExecutingAssembly().GetName().Version;
 
@@ -151,7 +150,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
             Controls.Add(closeButton);
             closeButton.BringToFront();
 
-            // Versión color del isologo solo sobre fondo blanco: va sobre el cuerpo, a tamaño real
+            // El logo tiene fondo blanco: va sobre el cuerpo blanco, a tamaño real
             // (sin escalar ni deformar), centrado horizontalmente, con Location absoluta.
             _logo = LoadLogo();
             if (_logo != null)

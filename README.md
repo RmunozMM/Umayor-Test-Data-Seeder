@@ -9,7 +9,7 @@ Reutiliza el motor de escritura de
 (`DataverseMasterDataMigrator.Core`) sin forkearlo.
 
 - **Autor:** Rogelio Muñoz — [www.rogeliomunoz.cl](http://www.rogeliomunoz.cl)
-- **Versión actual:** 0.1.26.0
+- **Versión actual:** 0.1.27.0
 - **Plataforma:** .NET Framework 4.8, WinForms
 - **Todos los derechos reservados.** El código está publicado para consulta y para descargar el
   instalador; no se autoriza su reutilización ni redistribución sin permiso del autor.
@@ -116,7 +116,7 @@ Instalar-Plugin.bat, Install-Umayor-Test-Data-Seeder.ps1
         /SubjectGraph                    <- SubjectResolver, SubjectRelationshipMap, SubjectProfileBuilder, SubjectTargetCleaner
         /Anonymization                   <- RutGenerator, PiiFaker, SubjectAnonymizingTransformer
     /Umayor.TestDataSeeder.XrmToolBox    <- plugin: Plugin.cs, PluginControl, adaptadores SDK
-        /Resources                       <- íconos 32/80 px (fuente del base64 de Plugin.cs) e isologo UMayor de 48 px del About
+        /Resources                       <- íconos 32/80 px (fuente del base64 de Plugin.cs), logo de la aplicación de 64 px del About y su fuente (app-logo-source.png)
 /tests
     /Umayor.TestDataSeeder.Tests         <- xUnit, sin conexión Dataverse real
 /docs
@@ -124,7 +124,7 @@ Instalar-Plugin.bat, Install-Umayor-Test-Data-Seeder.ps1
 /lib
     README.txt, Newtonsoft.Json.dll, Microsoft.Xrm.Sdk.dll, XrmToolBox.Extensibility.dll, ...
 /tools
-    make_icons.py                        <- regenera los íconos y el logo del About (Python + Pillow)
+    make_icons.py                        <- regenera los íconos (escudo) y el logo del About desde el logo de la aplicación (Python + Pillow)
 ```
 
 ---
