@@ -9,7 +9,7 @@ Reutiliza el motor de escritura de
 (`DataverseMasterDataMigrator.Core`) sin forkearlo.
 
 - **Autor:** Rogelio Muñoz — [www.rogeliomunoz.cl](http://www.rogeliomunoz.cl)
-- **Versión actual:** 0.1.25.0
+- **Versión actual:** 0.1.26.0
 - **Plataforma:** .NET Framework 4.8, WinForms
 - **Todos los derechos reservados.** El código está publicado para consulta y para descargar el
   instalador; no se autoriza su reutilización ni redistribución sin permiso del autor.
@@ -116,12 +116,15 @@ Instalar-Plugin.bat, Install-Umayor-Test-Data-Seeder.ps1
         /SubjectGraph                    <- SubjectResolver, SubjectRelationshipMap, SubjectProfileBuilder, SubjectTargetCleaner
         /Anonymization                   <- RutGenerator, PiiFaker, SubjectAnonymizingTransformer
     /Umayor.TestDataSeeder.XrmToolBox    <- plugin: Plugin.cs, PluginControl, adaptadores SDK
+        /Resources                       <- íconos 32/80 px (fuente del base64 de Plugin.cs) e isologo UMayor de 48 px del About
 /tests
     /Umayor.TestDataSeeder.Tests         <- xUnit, sin conexión Dataverse real
 /docs
     SUBJECT_RELATIONSHIP_MAP.md          <- especificación de las reglas por tabla (fuente de verdad)
 /lib
     README.txt, Newtonsoft.Json.dll, Microsoft.Xrm.Sdk.dll, XrmToolBox.Extensibility.dll, ...
+/tools
+    make_icons.py                        <- regenera los íconos y el logo del About (Python + Pillow)
 ```
 
 ---
@@ -202,5 +205,4 @@ ignora el flag sin avisar.
   (evita repetir fixes, ver trampas 3 y 4).
 - `customeraddress.freighttermscode`: diferencia real de valores de OptionSet entre Source y
   Target — requiere homologar la personalización, no es un bug de código.
-- Íconos reales de `Plugin.cs`.
 - Las DLL de `lib/` podrían venir de paquetes NuGet en lugar de estar versionadas.
