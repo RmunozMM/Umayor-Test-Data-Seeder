@@ -9,7 +9,7 @@ Reutiliza el motor de escritura de
 (`DataverseMasterDataMigrator.Core`) sin forkearlo.
 
 - **Autor:** Rogelio Muñoz — [www.rogeliomunoz.cl](http://www.rogeliomunoz.cl)
-- **Versión actual:** 0.1.24.0
+- **Versión actual:** 0.1.25.0
 - **Plataforma:** .NET Framework 4.8, WinForms
 - **Todos los derechos reservados.** El código está publicado para consulta y para descargar el
   instalador; no se autoriza su reutilización ni redistribución sin permiso del autor.
@@ -35,6 +35,7 @@ donde se escribe. Luego se ingresa un RUT (con o sin puntos y guión: `17175272-
 | **Diagnosticar Automatización en Target** | Solo lectura: lista los plugins (`sdkmessageprocessingstep`) y reglas de negocio registrados en Target sobre `Create` de las tablas de actividades, para explicar fallas causadas por automatización del ambiente. |
 | **Eliminar del Target** | Borra de Target (nunca de Source) los registros del sujeto resuelto, en orden inverso de creación, para limpiar un sujeto de prueba antes de volver a migrarlo. Pide confirmación explícita (por defecto "No"). |
 | **Limpiar Log** | Vacía el log de la pantalla entre corridas. |
+| **About** | Muestra versión, autor y enlaces del proyecto. La versión instalada también se ve junto al botón, arriba a la derecha. |
 
 **La anonimización no es opcional** — no existe forma de desactivarla desde la UI. Es
 determinística (el mismo RUT real siempre produce el mismo RUT falso, con dígito verificador

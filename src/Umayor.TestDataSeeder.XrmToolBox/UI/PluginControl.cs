@@ -65,14 +65,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
 
         public void ShowAboutDialog()
         {
-            var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-            MessageBox.Show(
-                $"Umayor Test Data Seeder\nVersión {version}\n\n" +
-                "Extrae el grafo de registros de un RUT/pasaporte desde Producción, lo anonimiza " +
-                "y lo migra a un entorno bajo — datos de prueba reales sin exponer PII.\n\n" +
-                "Rogelio Muñoz — www.rogeliomunoz.cl\n" +
-                "Repositorio: github.com/RmunozMM/Umayor-Test-Data-Seeder (privado)",
-                "About Umayor Test Data Seeder", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            using (var dialog = new AboutForm()) { dialog.ShowDialog(this); }
         }
 
         protected override void OnLoad(EventArgs e)
@@ -135,13 +128,37 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
         {
             Dock = DockStyle.Fill;
 
-            var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Padding = new Padding(15) };
+            // Barra superior persistente con la versión y un botón About propio, en vez de depender
+            // solo del menú "About Plugin" del host XrmToolBox — feedback real (heredado de
+            // DataverseMasterDataMigrator): ese menú del host es fácil de pasar por alto, y el
+            // plugin de referencia (Metadata Dataverse Document) pone About como un botón simple
+            // en su propia barra.
+            var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Padding = new Padding(15) };
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-            root.Controls.Add(BuildConnectionsRow(), 0, 0);
-            root.Controls.Add(BuildSubjectRow(), 0, 1);
+            var topBar = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                FlowDirection = FlowDirection.RightToLeft,
+                Padding = new Padding(5)
+            };
+            topBar.Controls.Add(MakeButton("About", (s, e) => ShowAboutDialog()));
+            var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            topBar.Controls.Add(new System.Windows.Forms.Label
+            {
+                Text = $"v{version.Major}.{version.Minor}.{version.Build}",
+                AutoSize = true,
+                ForeColor = Color.DimGray,
+                Margin = new Padding(0, 10, 10, 0)
+            });
+
+            root.Controls.Add(topBar, 0, 0);
+            root.Controls.Add(BuildConnectionsRow(), 0, 1);
+            root.Controls.Add(BuildSubjectRow(), 0, 2);
 
             _logBox = new TextBox
             {
@@ -152,7 +169,7 @@ namespace Umayor.TestDataSeeder.XrmToolBox.UI
                 Font = new Font(FontFamily.GenericMonospace, 9),
                 Margin = new Padding(0, 10, 0, 0)
             };
-            root.Controls.Add(_logBox, 0, 2);
+            root.Controls.Add(_logBox, 0, 3);
 
             Controls.Add(root);
         }

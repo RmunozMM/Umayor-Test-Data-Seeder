@@ -93,6 +93,7 @@
     <Compile Include="Services\DataverseMetadataProviderAdapter.cs" />
     <Compile Include="Services\DataverseRecordServiceAdapter.cs" />
     <Compile Include="Services\PluginExecutionLogger.cs" />
+    <Compile Include="UI\AboutForm.cs" />
     <Compile Include="UI\PluginControl.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
